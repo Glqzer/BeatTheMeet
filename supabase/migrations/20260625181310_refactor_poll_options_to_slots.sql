@@ -1,0 +1,1 @@
+alter table poll_options add column slot_time time;

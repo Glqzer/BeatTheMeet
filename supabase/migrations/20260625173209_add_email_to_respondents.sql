@@ -1,0 +1,1 @@
+alter table respondents add column email text not null default '';
