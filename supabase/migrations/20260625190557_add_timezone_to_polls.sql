@@ -1,0 +1,1 @@
+alter table polls add column timezone text not null default 'UTC';

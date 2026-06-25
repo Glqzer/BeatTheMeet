@@ -23,10 +23,20 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
 function TimeSelect({
   value,
   onChange,
+  filterAfter,
+  filterBefore,
 }: {
   value: string;
   onChange: (v: string) => void;
+  filterAfter?: string;
+  filterBefore?: string;
 }) {
+  const filtered = TIME_OPTIONS.filter((opt) => {
+    if (filterAfter && opt.value <= filterAfter) return false;
+    if (filterBefore && opt.value >= filterBefore) return false;
+    return true;
+  });
+
   return (
     <select
       value={value}
@@ -42,7 +52,7 @@ function TimeSelect({
       }}
     >
       <option value="">-- Select --</option>
-      {TIME_OPTIONS.map((opt) => (
+      {filtered.map((opt) => (
         <option key={opt.value} value={opt.value}>
           {opt.label}
         </option>
@@ -101,14 +111,29 @@ export default function CreatePoll() {
       return;
     }
 
-    const options = selectedDays.map((date) => ({
-      poll_id: poll.id,
-      date: dateKey(date),
-      start_time:
-        type === "date_time" ? timeRanges[dateKey(date)]?.start || null : null,
-      end_time:
-        type === "date_time" ? timeRanges[dateKey(date)]?.end || null : null,
-    }));
+    const options: { poll_id: string; date: string; slot_time: string | null; start_time: null; end_time: null }[] = 
+  type === 'date_time'
+    ? selectedDays.flatMap(date => {
+        const range = timeRanges[dateKey(date)]
+        if (!range?.start || !range?.end) return []
+        const slots: { poll_id: string; date: string; slot_time: string | null; start_time: null; end_time: null }[] = []
+        const toMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
+        const start = toMins(range.start)
+        const end = toMins(range.end)
+        for (let t = start; t < end; t += 30) {
+          const h = String(Math.floor(t / 60)).padStart(2, '0')
+          const m = String(t % 60).padStart(2, '0')
+          slots.push({ poll_id: poll.id, date: dateKey(date), slot_time: `${h}:${m}:00`, start_time: null, end_time: null })
+        }
+        return slots
+      })
+    : selectedDays.map(date => ({
+        poll_id: poll.id,
+        date: dateKey(date),
+        slot_time: null as string | null,
+        start_time: null as null,
+        end_time: null as null,
+      }))
 
     const { error: optionsError } = await supabase
       .from("poll_options")
@@ -176,40 +201,80 @@ export default function CreatePoll() {
 
       {type === "date_time" && selectedDays.length > 0 && (
         <div style={{ marginBottom: "1.5rem" }}>
-          <label>Time ranges</label>
+          <label style={{ color: "var(--text)", fontWeight: 500 }}>
+            Time ranges
+          </label>
           {[...selectedDays]
             .sort((a, b) => a.getTime() - b.getTime())
-            .map((date) => (
-              <div
-                key={dateKey(date)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  marginTop: 8,
-                }}
-              >
-                <span
-                  style={{ minWidth: 100, color: "var(--text)", fontSize: 14 }}
-                >
-                  {date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-                <TimeSelect
-                  value={timeRanges[dateKey(date)]?.start || ""}
-                  onChange={(v) => handleTimeChange(date, "start", v)}
-                />
-                <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-                  to
-                </span>
-                <TimeSelect
-                  value={timeRanges[dateKey(date)]?.end || ""}
-                  onChange={(v) => handleTimeChange(date, "end", v)}
-                />
-              </div>
-            ))}
+            .map((date, i, arr) => {
+              const key = dateKey(date);
+              const prevDate = i > 0 ? arr[i - 1] : null;
+              const prevKey = prevDate ? dateKey(prevDate) : null;
+              const prevRange = prevKey ? timeRanges[prevKey] : null;
+              const canCopyAbove = !!(prevRange?.start && prevRange?.end);
+
+              return (
+                <div key={key} style={{ marginTop: 10 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <span
+                      style={{
+                        minWidth: 60,
+                        color: "var(--text)",
+                        fontSize: 14,
+                      }}
+                    >
+                      {date.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                    <TimeSelect
+                      value={timeRanges[key]?.start || ""}
+                      onChange={(v) => handleTimeChange(date, "start", v)}
+                      filterBefore={timeRanges[key]?.end}
+                    />
+                    <span
+                      style={{ color: "var(--text-secondary)", fontSize: 13 }}
+                    >
+                      to
+                    </span>
+                    <TimeSelect
+                      value={timeRanges[key]?.end || ""}
+                      onChange={(v) => handleTimeChange(date, "end", v)}
+                      filterAfter={timeRanges[key]?.start}
+                    />
+                    {canCopyAbove && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimeRanges((prev) => ({
+                            ...prev,
+                            [key]: {
+                              start: prevRange!.start,
+                              end: prevRange!.end,
+                            },
+                          }));
+                        }}
+                        style={{
+                          fontSize: 12,
+                          color: "var(--primary)",
+                          background: "var(--primary-light)",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "4px 10px",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Copy above
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
         </div>
       )}
 

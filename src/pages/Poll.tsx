@@ -13,6 +13,7 @@ interface PollOption {
   id: string;
   poll_id: string;
   date: string;
+  slot_time: string | null;
   start_time: string | null;
   end_time: string | null;
 }
@@ -38,6 +39,12 @@ export default function Poll() {
   const [totalRespondents, setTotalRespondents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [datePage, setDatePage] = useState(0);
+  const PAGE_SIZE = 7;
+  const allDates = [...new Set(options.map(o => o.date))].sort();
+const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
+const visibleDates = allDates.slice(datePage * PAGE_SIZE, (datePage + 1) * PAGE_SIZE);
+const visibleOptions = options.filter(o => visibleDates.includes(o.date));
 
   useEffect(() => {
     if (!id) return;
@@ -47,20 +54,17 @@ export default function Poll() {
         .select("*")
         .eq("id", id)
         .single();
-
       if (!pollData) {
         setNotFound(true);
         setLoading(false);
         return;
       }
       setPoll(pollData);
-
       const { data: optionsData } = await supabase
         .from("poll_options")
         .select("*")
         .eq("poll_id", id)
         .order("date");
-
       setOptions(optionsData ?? []);
       setLoading(false);
     };
@@ -73,20 +77,16 @@ export default function Poll() {
       .from("respondents")
       .select("id")
       .eq("poll_id", id);
-
     const respondentIds = (respondents ?? []).map((r) => r.id);
     setTotalRespondents(respondentIds.length);
-
     if (respondentIds.length === 0) {
       setAllAvailability({});
       return;
     }
-
     const { data: avail } = await supabase
       .from("availability")
       .select("option_id")
       .in("respondent_id", respondentIds);
-
     const counts: Record<string, number> = {};
     for (const row of avail ?? []) {
       counts[row.option_id] = (counts[row.option_id] ?? 0) + 1;
@@ -126,14 +126,12 @@ export default function Poll() {
   const toggleCell = async (optionId: string) => {
     if (!respondent) return;
     const isAvailable = myAvailability.has(optionId);
-
     setMyAvailability((prev) => {
       const next = new Set(prev);
       if (isAvailable) next.delete(optionId);
       else next.add(optionId);
       return next;
     });
-
     if (isAvailable) {
       await supabase
         .from("availability")
@@ -148,7 +146,6 @@ export default function Poll() {
           { onConflict: "respondent_id,option_id", ignoreDuplicates: true },
         );
     }
-
     await loadAllAvailability();
   };
 
@@ -192,7 +189,6 @@ export default function Poll() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      {/* Navbar */}
       <nav
         style={{
           background: "var(--surface)",
@@ -219,7 +215,6 @@ export default function Poll() {
         <BackToDashboardButton />
       </nav>
 
-      {/* Poll title + share buttons */}
       <div
         style={{
           maxWidth: 1100,
@@ -278,8 +273,6 @@ export default function Poll() {
               </div>
             )}
           </div>
-
-          {/* Share buttons */}
           <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
             <CopyLinkButton />
             <a
@@ -305,7 +298,6 @@ export default function Poll() {
         </div>
       </div>
 
-      {/* Main grid — blurred when popup showing */}
       <div
         style={{
           maxWidth: 1100,
@@ -316,24 +308,38 @@ export default function Poll() {
           transition: "filter 0.3s",
         }}
       >
+        {totalPages > 1 && (
+  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+    <button
+      onClick={() => setDatePage(p => Math.max(0, p - 1))}
+      disabled={datePage === 0}
+      style={{ padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: datePage === 0 ? "var(--border)" : "var(--text)", cursor: datePage === 0 ? "default" : "pointer", fontSize: 13 }}
+    >
+      ← Prev
+    </button>
+    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+      {visibleDates[0] ? formatDate(visibleDates[0]) : ""} – {visibleDates[visibleDates.length - 1] ? formatDate(visibleDates[visibleDates.length - 1]) : ""}
+    </span>
+    <button
+      onClick={() => setDatePage(p => Math.min(totalPages - 1, p + 1))}
+      disabled={datePage === totalPages - 1}
+      style={{ padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: datePage === totalPages - 1 ? "var(--border)" : "var(--text)", cursor: datePage === totalPages - 1 ? "default" : "pointer", fontSize: 13 }}
+    >
+      Next →
+    </button>
+    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+      Page {datePage + 1} of {totalPages}
+    </span>
+  </div>
+)}
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}
         >
-          <AvailabilityGrid
-            poll={poll}
-            options={options}
-            myAvailability={myAvailability}
-            onToggle={toggleCell}
-          />
-          <HeatmapGrid
-            options={options}
-            allAvailability={allAvailability}
-            totalRespondents={totalRespondents}
-          />
+          <AvailabilityGrid poll={poll} options={visibleOptions} myAvailability={myAvailability} onToggle={toggleCell} />
+<HeatmapGrid poll={poll} options={visibleOptions} allAvailability={allAvailability} totalRespondents={totalRespondents} />
         </div>
       </div>
 
-      {/* Popups */}
       {step === "calendar_import" && (
         <Popup>
           <CalendarImportStep onDone={() => setStep("identity")} />
@@ -355,16 +361,13 @@ export default function Poll() {
   );
 }
 
-// ---- Copy link button ----
 function CopyLinkButton() {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
   return (
     <button
       onClick={handleCopy}
@@ -388,7 +391,6 @@ function CopyLinkButton() {
   );
 }
 
-// ---- Popup wrapper ----
 function Popup({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -419,7 +421,6 @@ function Popup({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ---- Calendar import step ----
 function CalendarImportStep({ onDone }: { onDone: () => void }) {
   return (
     <div>
@@ -500,27 +501,33 @@ function CalendarImportStep({ onDone }: { onDone: () => void }) {
 }
 
 function BackToDashboardButton() {
-  const [show, setShow] = useState(false)
-
+  const [show, setShow] = useState(false);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setShow(true)
-    })
-  }, [])
-
-  if (!show) return null
-
-  return (<a
-    
+      if (data.user) setShow(true);
+    });
+  }, []);
+  if (!show) return null;
+  return (
+    <a
       href="/dashboard"
-      style={{ fontSize: 13, color: "var(--text-secondary)", textDecoration: "none", display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "1px solid var(--border)", borderRadius: 8 }}
+      style={{
+        fontSize: 13,
+        color: "var(--text-secondary)",
+        textDecoration: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 12px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+      }}
     >
       ← Dashboard
     </a>
-  )
+  );
 }
 
-// ---- Identity step ----
 function IdentityStep({
   pollId,
   onDone,
@@ -549,7 +556,6 @@ function IdentityStep({
       return setError("Please enter your name and email.");
     setLoading(true);
     setError("");
-
     const { data: existing } = await supabase
       .from("respondents")
       .select("*")
@@ -557,24 +563,20 @@ function IdentityStep({
       .eq("name", name.trim())
       .eq("email", email.trim())
       .maybeSingle();
-
     if (existing) {
       onDone(existing);
       return;
     }
-
     const { data: newRespondent, error: insertError } = await supabase
       .from("respondents")
       .insert({ poll_id: pollId, name: name.trim(), email: email.trim() })
       .select()
       .single();
-
     if (insertError || !newRespondent) {
       setError("Something went wrong. Please try again.");
       setLoading(false);
       return;
     }
-
     onDone(newRespondent);
   };
 
@@ -667,7 +669,6 @@ function IdentityStep({
   );
 }
 
-// ---- Availability grid ----
 function AvailabilityGrid({
   poll,
   options,
@@ -681,93 +682,132 @@ function AvailabilityGrid({
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(false);
+  const [dragStartCell, setDragStartCell] = useState<{
+    date: string;
+    mins: number;
+  } | null>(null);
+  const [dragCurrentCell, setDragCurrentCell] = useState<{
+    date: string;
+    mins: number;
+  } | null>(null);
+  const [preDragAvailability, setPreDragAvailability] = useState<Set<string>>(
+    new Set(),
+  );
+  const [hoveredOption, setHoveredOption] = useState<PollOption | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-  const handleMouseDown = (optionId: string) => {
+  const handleMouseDown = (optionId: string, opt: PollOption) => {
     const willBeAvailable = !myAvailability.has(optionId);
     setDragValue(willBeAvailable);
     setIsDragging(true);
+    const cell = opt.slot_time
+      ? { date: opt.date, mins: parseMins(opt.slot_time) }
+      : null;
+    setDragStartCell(cell);
+    setDragCurrentCell(cell);
+    setPreDragAvailability(new Set(myAvailability));
     onToggle(optionId);
   };
 
-  const handleMouseEnter = (optionId: string) => {
-    if (!isDragging) return;
-    const isAvailable = myAvailability.has(optionId);
-    if (dragValue && !isAvailable) onToggle(optionId);
-    if (!dragValue && isAvailable) onToggle(optionId);
+  const handleMouseEnter = (
+    optionId: string,
+    opt: PollOption,
+    e: React.MouseEvent,
+  ) => {
+    setHoveredOption(opt);
+    setTooltipPos({ x: e.clientX, y: e.clientY });
+    if (!isDragging || !dragStartCell || !opt.slot_time) return;
+
+    const currentCell = { date: opt.date, mins: parseMins(opt.slot_time) };
+    setDragCurrentCell(currentCell);
+
+    const minDate = [dragStartCell.date, currentCell.date].sort()[0];
+    const maxDate = [dragStartCell.date, currentCell.date].sort()[1];
+    const minMins = Math.min(dragStartCell.mins, currentCell.mins);
+    const maxMins = Math.max(dragStartCell.mins, currentCell.mins);
+
+    // Build the new availability from pre-drag state
+    const next = new Set(preDragAvailability);
+
+    for (const option of options) {
+      if (!option.slot_time) continue;
+      const oMins = parseMins(option.slot_time);
+      const inRect =
+        option.date >= minDate &&
+        option.date <= maxDate &&
+        oMins >= minMins &&
+        oMins <= maxMins;
+      if (inRect) {
+        if (dragValue) next.add(option.id);
+        else next.delete(option.id);
+      }
+    }
+
+    // Find what changed and sync to DB
+    const added = [...next].filter((id) => !myAvailability.has(id));
+    const removed = [...myAvailability].filter((id) => !next.has(id));
+
+    for (const id of added) onToggle(id);
+    for (const id of removed) onToggle(id);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (hoveredOption) setTooltipPos({ x: e.clientX, y: e.clientY });
   };
 
   useEffect(() => {
-    const up = () => setIsDragging(false);
+    const up = () => {
+      setIsDragging(false);
+      setDragStartCell(null);
+    };
     window.addEventListener("mouseup", up);
     return () => window.removeEventListener("mouseup", up);
   }, []);
 
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
-          Your availability
-        </h2>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            color: "var(--text-secondary)",
-          }}
-        >
-          <div
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 3,
-              background: "#22c55e",
-            }}
-          />
-          Available
-        </div>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr>
-              {poll.type === "date_time" && <th style={{ width: 60 }} />}
-              {options.map((opt) => (
-                <th
-                  key={opt.id}
-                  style={{
-                    padding: "4px 8px",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "var(--text-secondary)",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {new Date(opt.date + "T00:00:00").toLocaleDateString(
-                    "en-US",
-                    { month: "short", day: "numeric" },
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {poll.type === "date_only" ? (
+  const dates = [...new Set(options.map((o) => o.date))].sort();
+
+  const getSlotLabel = (slotTime: string) => {
+    const parts = slotTime.split(":").map(Number);
+    const h = parts[0];
+    const m = parts[1];
+    const period = h < 12 ? "AM" : "PM";
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${display}:${String(m).padStart(2, "0")} ${period}`;
+  };
+
+  if (poll.type === "date_only") {
+    return (
+      <div>
+        <GridHeader title="Your availability" legend={<AvailableLegend />} />
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                {options.map((opt) => (
+                  <th
+                    key={opt.id}
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-secondary)",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatDate(opt.date)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
               <tr>
                 {options.map((opt) => (
                   <td key={opt.id} style={{ padding: 4, textAlign: "center" }}>
                     <div
-                      onMouseDown={() => handleMouseDown(opt.id)}
-                      onMouseEnter={() => handleMouseEnter(opt.id)}
+                      onMouseDown={() => handleMouseDown(opt.id, opt)}
+                      onMouseEnter={(e) => handleMouseEnter(opt.id, opt, e)}
+                      onMouseLeave={() => setHoveredOption(null)}
                       style={{
                         width: "100%",
                         height: 40,
@@ -783,14 +823,146 @@ function AvailabilityGrid({
                   </td>
                 ))}
               </tr>
-            ) : (
-              <TimeSlotRows
-                options={options}
-                myAvailability={myAvailability}
-                onMouseDown={handleMouseDown}
-                onMouseEnter={handleMouseEnter}
-              />
-            )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  const slotsByHour: Record<
+    string,
+    { mins: number; optsByDate: Record<string, PollOption> }[]
+  > = {};
+  for (const opt of options) {
+    if (!opt.slot_time) continue;
+    const parts = opt.slot_time.split(":").map(Number);
+    const h = parts[0];
+    const m = parts[1];
+    const mins = h * 60 + m;
+    const period = h < 12 ? "AM" : "PM";
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    const hourKey = `${display} ${period}`;
+    if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
+    let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
+    if (!slot) {
+      slot = { mins, optsByDate: {} };
+      slotsByHour[hourKey].push(slot);
+    }
+    slot.optsByDate[opt.date] = opt;
+  }
+
+  const hours = Object.keys(slotsByHour);
+
+  return (
+    <div style={{ position: "relative" }} onMouseMove={handleMouseMove}>
+      <GridHeader title="Your availability" legend={<AvailableLegend />} />
+      {hoveredOption?.slot_time && (
+        <div
+          style={{
+            position: "fixed",
+            left: tooltipPos.x + 12,
+            top: tooltipPos.y - 30,
+            background: "#1f2937",
+            color: "white",
+            padding: "4px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        >
+          {formatDate(hoveredOption.date)}{" "}
+          {getSlotLabel(hoveredOption.slot_time)} –{" "}
+          {addMins(hoveredOption.slot_time, 30)}
+        </div>
+      )}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr>
+              <th style={{ width: 70 }} />
+              {dates.map((d) => (
+                <th
+                  key={d}
+                  style={{
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "var(--text-secondary)",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 400,
+                      fontSize: 11,
+                      color: "var(--text-secondary)",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {formatDayOfWeek(d)}
+                  </div>
+                  <div>{formatDate(d)}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {hours.map((hour) => {
+              const slots = slotsByHour[hour].sort((a, b) => a.mins - b.mins);
+              return slots.map((slot, i) => (
+                <tr
+                  key={`${hour}-${slot.mins}`}
+                  style={{
+                    borderTop: i === 0 ? "1px solid var(--border)" : "none",
+                  }}
+                >
+                  <td
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-secondary)",
+                      paddingRight: 8,
+                      whiteSpace: "nowrap",
+                      verticalAlign: "middle",
+                      paddingTop: i === 0 ? 4 : 0,
+                    }}
+                  >
+                    {i === 0 ? hour : ""}
+                  </td>
+                  {dates.map((d) => {
+                    const opt = slot.optsByDate[d];
+                    return (
+                      <td key={d} style={{ padding: 2, textAlign: "center" }}>
+                        {opt ? (
+                          <div
+                            onMouseDown={() => handleMouseDown(opt.id, opt)}
+                            onMouseEnter={(e) =>
+                              handleMouseEnter(opt.id, opt, e)
+                            }
+                            onMouseLeave={() => setHoveredOption(null)}
+                            style={{
+                              width: "100%",
+                              height: 20,
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              background: myAvailability.has(opt.id)
+                                ? "#22c55e"
+                                : "var(--border)",
+                              transition: "background 0.1s",
+                              userSelect: "none",
+                            }}
+                          />
+                        ) : (
+                          <div style={{ height: 20 }} />
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })}
           </tbody>
         </table>
       </div>
@@ -798,69 +970,13 @@ function AvailabilityGrid({
   );
 }
 
-// ---- Time slot rows ----
-function TimeSlotRows({
-  options,
-  myAvailability,
-  onMouseDown,
-  onMouseEnter,
-}: {
-  options: PollOption[];
-  myAvailability: Set<string>;
-  onMouseDown: (id: string) => void;
-  onMouseEnter: (id: string) => void;
-}) {
-  const slots = generate30MinSlots(options);
-
-  return (
-    <>
-      {slots.map(({ label, optionIds }) => (
-        <tr key={label}>
-          <td
-            style={{
-              fontSize: 11,
-              color: "var(--text-secondary)",
-              paddingRight: 8,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {label}
-          </td>
-          {optionIds.map((optId, i) => (
-            <td key={i} style={{ padding: 2, textAlign: "center" }}>
-              {optId ? (
-                <div
-                  onMouseDown={() => onMouseDown(optId)}
-                  onMouseEnter={() => onMouseEnter(optId)}
-                  style={{
-                    width: "100%",
-                    height: 20,
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    background: myAvailability.has(optId)
-                      ? "#22c55e"
-                      : "var(--border)",
-                    transition: "background 0.1s",
-                    userSelect: "none",
-                  }}
-                />
-              ) : (
-                <div style={{ height: 20 }} />
-              )}
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-}
-
-// ---- Heatmap grid ----
 function HeatmapGrid({
+  poll,
   options,
   allAvailability,
   totalRespondents,
 }: {
+  poll: Poll;
   options: PollOption[];
   allAvailability: Record<string, number>;
   totalRespondents: number;
@@ -873,64 +989,97 @@ function HeatmapGrid({
     return "#7c3aed";
   };
 
+  const dates = [...new Set(options.map((o) => o.date))].sort();
+
+  if (poll.type === "date_only") {
+    return (
+      <div>
+        <GridHeader title="Group availability" legend={<HeatmapLegend />} />
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                {options.map((opt) => (
+                  <th
+                    key={opt.id}
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-secondary)",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatDate(opt.date)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {options.map((opt) => (
+                  <td key={opt.id} style={{ padding: 4, textAlign: "center" }}>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        borderRadius: 6,
+                        background: getColor(allAvailability[opt.id] ?? 0),
+                        transition: "background 0.3s",
+                      }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p
+          style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8 }}
+        >
+          {totalRespondents} {totalRespondents === 1 ? "person" : "people"}{" "}
+          responded
+        </p>
+      </div>
+    );
+  }
+
+  const slotsByHour: Record<
+    string,
+    { mins: number; optsByDate: Record<string, PollOption> }[]
+  > = {};
+  for (const opt of options) {
+    if (!opt.slot_time) continue;
+    const parts = opt.slot_time.split(":").map(Number);
+    const h = parts[0];
+    const m = parts[1];
+    const mins = h * 60 + m;
+    const period = h < 12 ? "AM" : "PM";
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    const hourKey = `${display} ${period}`;
+    if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
+    let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
+    if (!slot) {
+      slot = { mins, optsByDate: {} };
+      slotsByHour[hourKey].push(slot);
+    }
+    slot.optsByDate[opt.date] = opt;
+  }
+
+  const hours = Object.keys(slotsByHour);
+
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
-          Group availability
-        </h2>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 11,
-            color: "var(--text-secondary)",
-          }}
-        >
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 2,
-              background: "#bfdbfe",
-            }}
-          />{" "}
-          Few
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 2,
-              background: "#f9a8d4",
-            }}
-          />{" "}
-          Some
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 2,
-              background: "#7c3aed",
-            }}
-          />{" "}
-          Most
-        </div>
-      </div>
+      <GridHeader title="Group availability" legend={<HeatmapLegend />} />
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead>
             <tr>
-              {options.map((opt) => (
+              <th style={{ width: 70 }} />
+              {dates.map((d) => (
                 <th
-                  key={opt.id}
+                  key={d}
                   style={{
                     padding: "4px 8px",
                     fontSize: 12,
@@ -940,30 +1089,64 @@ function HeatmapGrid({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {new Date(opt.date + "T00:00:00").toLocaleDateString(
-                    "en-US",
-                    { month: "short", day: "numeric" },
-                  )}
+                  <div
+                    style={{
+                      fontWeight: 400,
+                      fontSize: 11,
+                      color: "var(--text-secondary)",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {formatDayOfWeek(d)}
+                  </div>
+                  <div>{formatDate(d)}</div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {options.map((opt) => (
-                <td key={opt.id} style={{ padding: 4, textAlign: "center" }}>
-                  <div
+            {hours.map((hour) => {
+              const slots = slotsByHour[hour].sort((a, b) => a.mins - b.mins);
+              return slots.map((slot, i) => (
+                <tr
+                  key={`${hour}-${slot.mins}`}
+                  style={{
+                    borderTop: i === 0 ? "1px solid var(--border)" : "none",
+                  }}
+                >
+                  <td
                     style={{
-                      width: "100%",
-                      height: 40,
-                      borderRadius: 6,
-                      background: getColor(allAvailability[opt.id] ?? 0),
-                      transition: "background 0.3s",
+                      fontSize: 11,
+                      color: "var(--text-secondary)",
+                      paddingRight: 8,
+                      whiteSpace: "nowrap",
+                      verticalAlign: "middle",
+                      paddingTop: i === 0 ? 4 : 0,
                     }}
-                  />
-                </td>
-              ))}
-            </tr>
+                  >
+                    {i === 0 ? hour : ""}
+                  </td>
+                  {dates.map((d) => {
+                    const opt = slot.optsByDate[d];
+                    return (
+                      <td key={d} style={{ padding: 2, textAlign: "center" }}>
+                        <div
+                          style={{
+                            width: "100%",
+                            height: 20,
+                            borderRadius: 4,
+                            background: opt
+                              ? getColor(allAvailability[opt.id] ?? 0)
+                              : "transparent",
+                            transition: "background 0.3s",
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })}
           </tbody>
         </table>
       </div>
@@ -975,38 +1158,117 @@ function HeatmapGrid({
   );
 }
 
-// ---- Helper: generate 30 min slots ----
-function generate30MinSlots(options: PollOption[]) {
-  const times = options
-    .flatMap((o) => [o.start_time, o.end_time])
-    .filter(Boolean) as string[];
-  if (times.length === 0) return [];
-
-  const toMins = (t: string) => {
-    const [h, m] = t.split(":").map(Number);
-    return h * 60 + m;
-  };
-
-  const minTime = Math.min(...times.map(toMins));
-  const maxTime = Math.max(...times.map(toMins));
-
-  const slots: { label: string; optionIds: (string | null)[] }[] = [];
-  for (let t = minTime; t < maxTime; t += 30) {
-    const label = new Date(
-      2000,
-      0,
-      1,
-      Math.floor(t / 60),
-      t % 60,
-    ).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    const optionIds = options.map((opt) => {
-      if (!opt.start_time || !opt.end_time) return null;
-      const start = toMins(opt.start_time);
-      const end = toMins(opt.end_time);
-      return t >= start && t < end ? opt.id : null;
-    });
-    slots.push({ label, optionIds });
-  }
-  return slots;
+function GridHeader({
+  title,
+  legend,
+}: {
+  title: string;
+  legend: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12,
+      }}
+    >
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>
+        {title}
+      </h2>
+      {legend}
+    </div>
+  );
 }
 
+function AvailableLegend() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 12,
+        color: "var(--text-secondary)",
+      }}
+    >
+      <div
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 3,
+          background: "#22c55e",
+        }}
+      />
+      Available
+    </div>
+  );
+}
+
+function HeatmapLegend() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 11,
+        color: "var(--text-secondary)",
+      }}
+    >
+      <div
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 2,
+          background: "#bfdbfe",
+        }}
+      />{" "}
+      Few
+      <div
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 2,
+          background: "#f9a8d4",
+        }}
+      />{" "}
+      Some
+      <div
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 2,
+          background: "#7c3aed",
+        }}
+      />{" "}
+      Most
+    </div>
+  );
+}
+
+function formatDate(date: string) {
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+function formatDayOfWeek(date: string) {
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })
+}
+
+function addMins(slotTime: string, mins: number) {
+  const parts = slotTime.split(":").map(Number);
+  const h = parts[0];
+  const m = parts[1];
+  const total = h * 60 + m + mins;
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  const period = nh < 12 ? "AM" : "PM";
+  const display = nh === 0 ? 12 : nh > 12 ? nh - 12 : nh;
+  return `${display}:${String(nm).padStart(2, "0")} ${period}`;
+}
+
+function parseMins(slotTime: string) {
+  const parts = slotTime.split(":").map(Number);
+  return parts[0] * 60 + parts[1];
+}
