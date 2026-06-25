@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CalendarPicker from '../components/CalendarPicker'
 import { supabase } from '../lib/supabase'
@@ -19,6 +19,13 @@ export default function CreatePoll() {
   const [timeRanges, setTimeRanges] = useState<Record<string, TimeRange>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id ?? null)
+    })
+  }, [])
 
   const dateKey = (d: Date) => d.toISOString().split('T')[0]
 
@@ -32,12 +39,13 @@ export default function CreatePoll() {
   const handleSubmit = async () => {
     if (!title.trim()) return setError('Please add a title.')
     if (selectedDays.length === 0) return setError('Please select at least one date.')
+    if (!userId) return setError('You must be signed in to create a poll.')
     setError('')
     setLoading(true)
 
     const { data: poll, error: pollError } = await supabase
       .from('polls')
-      .insert({ title, description, type })
+      .insert({ title, description, type, created_by: userId })
       .select()
       .single()
 
