@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useIsMobile } from "../lib/useIsMobile";
 import CreatePollModal from './CreatePoll'
 
 interface Poll {
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCreate, setShowCreate] = useState(false)
+  const isMobile = useIsMobile();
 
   const loadPolls = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -68,17 +70,17 @@ export default function Dashboard() {
         <span style={{ fontWeight: 700, fontSize: 18, background: "linear-gradient(135deg, var(--primary), var(--accent))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
           BeatTheMeet
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{userEmail}</span>
-          <button onClick={handleSignOut} style={{ padding: "6px 14px", background: "none", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", color: "var(--text-secondary)", fontSize: 13 }}>
-            Sign out
-          </button>
-        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+  {!isMobile && <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{userEmail}</span>}
+  <button onClick={handleSignOut} style={{ padding: "6px 12px", background: "none", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", color: "var(--text-secondary)", fontSize: 13 }}>
+    Sign out
+  </button>
+</div>
       </nav>
 
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "2.5rem 1.5rem" }}>
         {/* Page header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", marginBottom: "2rem", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text)" }}>My Events</h1>
             <p style={{ color: "var(--text-secondary)", fontSize: 14, marginTop: 4 }}>

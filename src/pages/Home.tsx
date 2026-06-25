@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useIsMobile } from "../lib/useIsMobile";
 
 export default function Home() {
   const navigate = useNavigate();
   const [authed, setAuthed] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -47,8 +49,7 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section style={{ maxWidth: 760, margin: "0 auto", padding: "5rem 2rem 4rem", textAlign: "center" }}>
-        <div style={{ display: "inline-block", background: "var(--primary-light)", color: "var(--primary)", borderRadius: 99, padding: "4px 14px", fontSize: 13, fontWeight: 500, marginBottom: 24 }}>
+<section style={{ maxWidth: 760, margin: "0 auto", padding: isMobile ? "3rem 1.5rem 2.5rem" : "5rem 2rem 4rem", textAlign: "center" }}>        <div style={{ display: "inline-block", background: "var(--primary-light)", color: "var(--primary)", borderRadius: 99, padding: "4px 14px", fontSize: 13, fontWeight: 500, marginBottom: 24 }}>
           Free to use · No account needed to respond
         </div>
         <h1 style={{ fontSize: "clamp(2.4rem, 6vw, 3.8rem)", fontWeight: 800, lineHeight: 1.15, marginBottom: 20, letterSpacing: "-0.02em" }}>
@@ -79,7 +80,7 @@ export default function Home() {
 
       {/* Social proof strip */}
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)", padding: "1rem 2rem" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", justifyContent: "center", gap: "3rem", flexWrap: "wrap" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", justifyContent: "center", gap: isMobile ? "1.5rem" : "3rem", flexWrap: "wrap" }}>
           {[
             { stat: "No login required", sub: "for respondents" },
             { stat: "Real-time", sub: "availability updates" },

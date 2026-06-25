@@ -1,14 +1,20 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { COMMON_TIMEZONES, getLocalTimezone, getLocalTimezoneLabel, formatSlotInTz } from '../lib/timezones'
+import {
+  COMMON_TIMEZONES,
+  getLocalTimezone,
+  getLocalTimezoneLabel,
+  formatSlotInTz,
+} from "../lib/timezones";
+import { useIsMobile } from "../lib/useIsMobile";
 
 interface Poll {
-  id: string
-  title: string
-  description: string
-  type: "date_only" | "date_time"
-  timezone: string
+  id: string;
+  title: string;
+  description: string;
+  type: "date_only" | "date_time";
+  timezone: string;
 }
 
 interface PollOption {
@@ -43,11 +49,15 @@ export default function Poll() {
   const [notFound, setNotFound] = useState(false);
   const [datePage, setDatePage] = useState(0);
   const PAGE_SIZE = 7;
-  const allDates = [...new Set(options.map(o => o.date))].sort();
-const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
-const visibleDates = allDates.slice(datePage * PAGE_SIZE, (datePage + 1) * PAGE_SIZE);
-const visibleOptions = options.filter(o => visibleDates.includes(o.date));
-const [displayTz, setDisplayTz] = useState(getLocalTimezone())
+  const allDates = [...new Set(options.map((o) => o.date))].sort();
+  const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
+  const visibleDates = allDates.slice(
+    datePage * PAGE_SIZE,
+    (datePage + 1) * PAGE_SIZE,
+  );
+  const visibleOptions = options.filter((o) => visibleDates.includes(o.date));
+  const [displayTz, setDisplayTz] = useState(getLocalTimezone());
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!id) return;
@@ -225,15 +235,7 @@ const [displayTz, setDisplayTz] = useState(getLocalTimezone())
           padding: "2rem 1.5rem 1rem",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "flex-start", flexDirection: isMobile ? "column" : "row", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)" }}>
               {poll.title}
@@ -276,7 +278,7 @@ const [displayTz, setDisplayTz] = useState(getLocalTimezone())
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyLinkButton />
             <a
               href={`mailto:?subject=Fill out my availability poll&body=Hey! Please fill out this scheduling poll: ${window.location.href}`}
@@ -301,28 +303,59 @@ const [displayTz, setDisplayTz] = useState(getLocalTimezone())
         </div>
       </div>
 
-      {poll.type === 'date_time' && (
-  <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1.5rem', marginBottom: 20 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Viewing in:</span>
-      <select
-        value={displayTz}
-        onChange={e => setDisplayTz(e.target.value)}
-        style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', color: 'var(--text)', fontSize: 13, cursor: 'pointer' }}
-      >
-        <option value={getLocalTimezone()}>Local — {getLocalTimezoneLabel()}</option>
-        {COMMON_TIMEZONES.filter(t => t.value !== getLocalTimezone()).map(tz => (
-          <option key={tz.value} value={tz.value}>{tz.label}</option>
-        ))}
-      </select>
-      {poll.timezone && poll.timezone !== displayTz && (
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-          Poll created in {COMMON_TIMEZONES.find(t => t.value === poll.timezone)?.label ?? poll.timezone}
-        </span>
+      {poll.type === "date_time" && (
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "0 1.5rem",
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--text-secondary)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Viewing in:
+            </span>
+            <select
+              value={displayTz}
+              onChange={(e) => setDisplayTz(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--bg)",
+                color: "var(--text)",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              <option value={getLocalTimezone()}>
+                Local — {getLocalTimezoneLabel()}
+              </option>
+              {COMMON_TIMEZONES.filter(
+                (t) => t.value !== getLocalTimezone(),
+              ).map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label}
+                </option>
+              ))}
+            </select>
+            {poll.timezone && poll.timezone !== displayTz && (
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                Poll created in{" "}
+                {COMMON_TIMEZONES.find((t) => t.value === poll.timezone)
+                  ?.label ?? poll.timezone}
+              </span>
+            )}
+          </div>
+        </div>
       )}
-    </div>
-  </div>
-)}
 
       <div
         style={{
@@ -335,46 +368,80 @@ const [displayTz, setDisplayTz] = useState(getLocalTimezone())
         }}
       >
         {totalPages > 1 && (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-    <button
-      onClick={() => setDatePage(p => Math.max(0, p - 1))}
-      disabled={datePage === 0}
-      style={{ padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: datePage === 0 ? "var(--border)" : "var(--text)", cursor: datePage === 0 ? "default" : "pointer", fontSize: 13 }}
-    >
-      ← Prev
-    </button>
-    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-      {visibleDates[0] ? formatDate(visibleDates[0]) : ""} – {visibleDates[visibleDates.length - 1] ? formatDate(visibleDates[visibleDates.length - 1]) : ""}
-    </span>
-    <button
-      onClick={() => setDatePage(p => Math.min(totalPages - 1, p + 1))}
-      disabled={datePage === totalPages - 1}
-      style={{ padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: datePage === totalPages - 1 ? "var(--border)" : "var(--text)", cursor: datePage === totalPages - 1 ? "default" : "pointer", fontSize: 13 }}
-    >
-      Next →
-    </button>
-    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-      Page {datePage + 1} of {totalPages}
-    </span>
-  </div>
-)}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={() => setDatePage((p) => Math.max(0, p - 1))}
+              disabled={datePage === 0}
+              style={{
+                padding: "6px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--surface)",
+                color: datePage === 0 ? "var(--border)" : "var(--text)",
+                cursor: datePage === 0 ? "default" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              ← Prev
+            </button>
+            <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+              {visibleDates[0] ? formatDate(visibleDates[0]) : ""} –{" "}
+              {visibleDates[visibleDates.length - 1]
+                ? formatDate(visibleDates[visibleDates.length - 1])
+                : ""}
+            </span>
+            <button
+              onClick={() =>
+                setDatePage((p) => Math.min(totalPages - 1, p + 1))
+              }
+              disabled={datePage === totalPages - 1}
+              style={{
+                padding: "6px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--surface)",
+                color:
+                  datePage === totalPages - 1 ? "var(--border)" : "var(--text)",
+                cursor: datePage === totalPages - 1 ? "default" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              Next →
+            </button>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              Page {datePage + 1} of {totalPages}
+            </span>
+          </div>
+        )}
         <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 24,
+          }}
         >
           <AvailabilityGrid
-  poll={poll}
-  options={visibleOptions}
-  myAvailability={myAvailability}
-  onToggle={toggleCell}
-  displayTz={displayTz}
-/>
-<HeatmapGrid
-  poll={poll}
-  options={visibleOptions}
-  allAvailability={allAvailability}
-  totalRespondents={totalRespondents}
-  displayTz={displayTz}
-/>
+            poll={poll}
+            options={visibleOptions}
+            myAvailability={myAvailability}
+            onToggle={toggleCell}
+            displayTz={displayTz}
+          />
+          <HeatmapGrid
+            poll={poll}
+            options={visibleOptions}
+            allAvailability={allAvailability}
+            totalRespondents={totalRespondents}
+            displayTz={displayTz}
+          />
         </div>
       </div>
 
@@ -386,14 +453,14 @@ const [displayTz, setDisplayTz] = useState(getLocalTimezone())
       {step === "identity" && (
         <Popup>
           <IdentityStep
-  pollId={poll.id}
-  onDone={(r, tz) => {
-    setRespondent(r)
-    setDisplayTz(tz)
-    loadMyAvailability(r.id)
-    setStep('grid')
-  }}
-/>
+            pollId={poll.id}
+            onDone={(r, tz) => {
+              setRespondent(r);
+              setDisplayTz(tz);
+              loadMyAvailability(r.id);
+              setStep("grid");
+            }}
+          />
         </Popup>
       )}
     </div>
@@ -567,11 +634,14 @@ function BackToDashboardButton() {
   );
 }
 
-function IdentityStep({ pollId, onDone }: {
-  pollId: string
-  onDone: (r: Respondent, tz: string) => void
+function IdentityStep({
+  pollId,
+  onDone,
+}: {
+  pollId: string;
+  onDone: (r: Respondent, tz: string) => void;
 }) {
-  const [timezone, setTimezone] = useState(getLocalTimezone())
+  const [timezone, setTimezone] = useState(getLocalTimezone());
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [emailLocked, setEmailLocked] = useState(false);
@@ -687,18 +757,41 @@ function IdentityStep({ pollId, onDone }: {
           <p style={{ color: "var(--accent)", fontSize: 13 }}>{error}</p>
         )}
         <div>
-  <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Your time zone</label>
-  <select
-    value={timezone}
-    onChange={e => setTimezone(e.target.value)}
-    style={{ padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', color: 'var(--text)', width: '100%', fontSize: 13 }}
-  >
-    <option value={getLocalTimezone()}>Local — {getLocalTimezoneLabel()}</option>
-    {COMMON_TIMEZONES.filter(t => t.value !== getLocalTimezone()).map(tz => (
-      <option key={tz.value} value={tz.value}>{tz.label}</option>
-    ))}
-  </select>
-</div>
+          <label
+            style={{
+              fontSize: 13,
+              color: "var(--text-secondary)",
+              display: "block",
+              marginBottom: 4,
+            }}
+          >
+            Your time zone
+          </label>
+          <select
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              background: "var(--bg)",
+              color: "var(--text)",
+              width: "100%",
+              fontSize: 13,
+            }}
+          >
+            <option value={getLocalTimezone()}>
+              Local — {getLocalTimezoneLabel()}
+            </option>
+            {COMMON_TIMEZONES.filter((t) => t.value !== getLocalTimezone()).map(
+              (tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label}
+                </option>
+              ),
+            )}
+          </select>
+        </div>
         <button
           onClick={handleSubmit}
           disabled={loading}
@@ -719,12 +812,18 @@ function IdentityStep({ pollId, onDone }: {
   );
 }
 
-function AvailabilityGrid({ poll, options, myAvailability, onToggle, displayTz }: {
-  poll: Poll
-  options: PollOption[]
-  myAvailability: Set<string>
-  onToggle: (optionId: string) => void
-  displayTz: string
+function AvailabilityGrid({
+  poll,
+  options,
+  myAvailability,
+  onToggle,
+  displayTz,
+}: {
+  poll: Poll;
+  options: PollOption[];
+  myAvailability: Set<string>;
+  onToggle: (optionId: string) => void;
+  displayTz: string;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(false);
@@ -825,9 +924,9 @@ function AvailabilityGrid({ poll, options, myAvailability, onToggle, displayTz }
     return (
       <div>
         <GridHeader
-  title={`Your availability ${displayTz !== poll.timezone ? `(${COMMON_TIMEZONES.find(t => t.value === displayTz)?.label?.split(' ')[0] ?? displayTz})` : ''}`}
-  legend={<AvailableLegend />}
-/>
+          title={`Your availability ${displayTz !== poll.timezone ? `(${COMMON_TIMEZONES.find((t) => t.value === displayTz)?.label?.split(" ")[0] ?? displayTz})` : ""}`}
+          legend={<AvailableLegend />}
+        />
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
@@ -879,24 +978,36 @@ function AvailabilityGrid({ poll, options, myAvailability, onToggle, displayTz }
     );
   }
 
-  const slotsByHour: Record<string, { mins: number; optsByDate: Record<string, PollOption> }[]> = {};
-for (const opt of options) {
-  if (!opt.slot_time) continue;
-  const parts = opt.slot_time.split(":").map(Number);
-  const h = parts[0]; const m = parts[1];
-  const mins = h * 60 + m;
+  const slotsByHour: Record<
+    string,
+    { mins: number; optsByDate: Record<string, PollOption> }[]
+  > = {};
+  for (const opt of options) {
+    if (!opt.slot_time) continue;
+    const parts = opt.slot_time.split(":").map(Number);
+    const h = parts[0];
+    const m = parts[1];
+    const mins = h * 60 + m;
 
-  // Use converted time for the hour label
-  const convertedLabel = formatSlotInTz(opt.date, opt.slot_time, poll.timezone, displayTz)
-  const [timePart, period] = convertedLabel.split(' ')
-  const displayH = timePart.split(':')[0]
-  const hourKey = `${displayH} ${period}`
+    // Use converted time for the hour label
+    const convertedLabel = formatSlotInTz(
+      opt.date,
+      opt.slot_time,
+      poll.timezone,
+      displayTz,
+    );
+    const [timePart, period] = convertedLabel.split(" ");
+    const displayH = timePart.split(":")[0];
+    const hourKey = `${displayH} ${period}`;
 
-  if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
-  let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
-  if (!slot) { slot = { mins, optsByDate: {} }; slotsByHour[hourKey].push(slot); }
-  slot.optsByDate[opt.date] = opt;
-}
+    if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
+    let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
+    if (!slot) {
+      slot = { mins, optsByDate: {} };
+      slotsByHour[hourKey].push(slot);
+    }
+    slot.optsByDate[opt.date] = opt;
+  }
 
   const hours = Object.keys(slotsByHour);
 
@@ -904,10 +1015,36 @@ for (const opt of options) {
     <div style={{ position: "relative" }} onMouseMove={handleMouseMove}>
       <GridHeader title="Your availability" legend={<AvailableLegend />} />
       {hoveredOption?.slot_time && (
-  <div style={{ position: "fixed", left: tooltipPos.x + 12, top: tooltipPos.y - 30, background: "#1f2937", color: "white", padding: "4px 10px", borderRadius: 6, fontSize: 12, pointerEvents: "none", zIndex: 100 }}>
-{formatDate(hoveredOption.date)} {formatSlotInTz(hoveredOption.date, hoveredOption.slot_time, poll.timezone, displayTz)} – {formatSlotInTz(hoveredOption.date, addMinsToSlot(hoveredOption.slot_time, 30), poll.timezone, displayTz)}
-  </div>
-)}
+        <div
+          style={{
+            position: "fixed",
+            left: tooltipPos.x + 12,
+            top: tooltipPos.y - 30,
+            background: "#1f2937",
+            color: "white",
+            padding: "4px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        >
+          {formatDate(hoveredOption.date)}{" "}
+          {formatSlotInTz(
+            hoveredOption.date,
+            hoveredOption.slot_time,
+            poll.timezone,
+            displayTz,
+          )}{" "}
+          –{" "}
+          {formatSlotInTz(
+            hoveredOption.date,
+            addMinsToSlot(hoveredOption.slot_time, 30),
+            poll.timezone,
+            displayTz,
+          )}
+        </div>
+      )}
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead>
@@ -1078,24 +1215,36 @@ function HeatmapGrid({
     );
   }
 
-  const slotsByHour: Record<string, { mins: number; optsByDate: Record<string, PollOption> }[]> = {};
-for (const opt of options) {
-  if (!opt.slot_time) continue;
-  const parts = opt.slot_time.split(":").map(Number);
-  const h = parts[0]; const m = parts[1];
-  const mins = h * 60 + m;
+  const slotsByHour: Record<
+    string,
+    { mins: number; optsByDate: Record<string, PollOption> }[]
+  > = {};
+  for (const opt of options) {
+    if (!opt.slot_time) continue;
+    const parts = opt.slot_time.split(":").map(Number);
+    const h = parts[0];
+    const m = parts[1];
+    const mins = h * 60 + m;
 
-  // Use converted time for the hour label
-  const convertedLabel = formatSlotInTz(opt.date, opt.slot_time, poll.timezone, displayTz)
-  const [timePart, period] = convertedLabel.split(' ')
-  const displayH = timePart.split(':')[0]
-  const hourKey = `${displayH} ${period}`
+    // Use converted time for the hour label
+    const convertedLabel = formatSlotInTz(
+      opt.date,
+      opt.slot_time,
+      poll.timezone,
+      displayTz,
+    );
+    const [timePart, period] = convertedLabel.split(" ");
+    const displayH = timePart.split(":")[0];
+    const hourKey = `${displayH} ${period}`;
 
-  if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
-  let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
-  if (!slot) { slot = { mins, optsByDate: {} }; slotsByHour[hourKey].push(slot); }
-  slot.optsByDate[opt.date] = opt;
-}
+    if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
+    let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
+    if (!slot) {
+      slot = { mins, optsByDate: {} };
+      slotsByHour[hourKey].push(slot);
+    }
+    slot.optsByDate[opt.date] = opt;
+  }
 
   const hours = Object.keys(slotsByHour);
 
@@ -1279,19 +1428,24 @@ function HeatmapLegend() {
 }
 
 function formatDate(date: string) {
-  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatDayOfWeek(date: string) {
-  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", {
+    weekday: "short",
+  });
 }
 
 function addMinsToSlot(slotTime: string, mins: number): string {
-  const parts = slotTime.split(':').map(Number)
-  const total = parts[0] * 60 + parts[1] + mins
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`
+  const parts = slotTime.split(":").map(Number);
+  const total = parts[0] * 60 + parts[1] + mins;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 }
 
 function parseMins(slotTime: string) {
