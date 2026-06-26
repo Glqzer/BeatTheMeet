@@ -89,14 +89,21 @@ export default function Poll() {
     busy: { start: string; end: string; summary?: string }[],
     respondentId: string,
   ) => {
+    if (!poll) return
     const newBusySlots: Record<string, string> = {};
 
     for (const option of options) {
       if (!option.slot_time) continue;
       const [h, m] = option.slot_time.split(":").map(Number);
-      const slotStart = new Date(
-        `${option.date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`,
+
+      // Convert slot time from poll's timezone to UTC for comparison
+      const naive = `${option.date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+      const asUTC = new Date(naive + "Z");
+      const inPollTz = new Date(
+        asUTC.toLocaleString("en-US", { timeZone: poll.timezone }),
       );
+      const offset = asUTC.getTime() - inPollTz.getTime();
+      const slotStart = new Date(asUTC.getTime() + offset);
       const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
 
       const busyEvent = busy.find((b) => {
@@ -284,26 +291,54 @@ export default function Poll() {
               </p>
             )}
             {respondent && (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-      Filling as <strong style={{ color: "var(--text)" }}>{respondent.name}</strong> ({respondent.email})
-    </span>
-    {Object.keys(busySlots).length > 0 && (
-      <button
-        onClick={() => setBusySlots({})}
-        style={{ fontSize: 12, color: "var(--text-secondary)", background: "var(--border)", border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
-      >
-        Clear Imported Calendar
-      </button>
-    )}
-    <button
-      onClick={deleteResponse}
-      style={{ fontSize: 12, color: "var(--accent)", background: "var(--accent-light)", border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
-    >
-      Delete My Response
-    </button>
-  </div>
-)}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  marginTop: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  Filling as{" "}
+                  <strong style={{ color: "var(--text)" }}>
+                    {respondent.name}
+                  </strong>{" "}
+                  ({respondent.email})
+                </span>
+                {Object.keys(busySlots).length > 0 && (
+                  <button
+                    onClick={() => setBusySlots({})}
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-secondary)",
+                      background: "var(--border)",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "3px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Clear Imported Calendar
+                  </button>
+                )}
+                <button
+                  onClick={deleteResponse}
+                  style={{
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    background: "var(--accent-light)",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete My Response
+                </button>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyLinkButton />
