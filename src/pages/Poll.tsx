@@ -2126,29 +2126,32 @@ function parseMins(slotTime: string) {
 }
 
 function slotToUTC(date: string, h: number, m: number, tz: string): Date {
-  // Build the wall clock time string
-  const naive = `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  // Use Intl.DateTimeFormat instead of toLocaleString for cross-browser compatibility
+  const year = parseInt(date.slice(0, 4))
+  const month = parseInt(date.slice(5, 7)) - 1
+  const day = parseInt(date.slice(8, 10))
 
-  // Treat it as UTC first to get a Date object
-  const utcGuess = new Date(naive + "Z").getTime();
+  // Start with a UTC date at the given wall clock time
+  const utcGuess = Date.UTC(year, month, day, h, m, 0)
 
-  // Ask the browser: what does this UTC moment look like in the target timezone?
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  // Format this UTC moment in the target timezone using Intl
+  const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
-  });
+  })
 
-  const inTzStr = formatter.format(new Date(utcGuess));
-  const inTzDate = new Date(inTzStr + "Z").getTime();
+  const parts = fmt.formatToParts(new Date(utcGuess))
+  const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0')
 
-  // The offset between what we want (naive) and what UTC actually shows in that tz
-  const offset = utcGuess - inTzDate;
+  const tzH = get('hour') === 24 ? 0 : get('hour')
+  const inTzMs = Date.UTC(get('year'), get('month') - 1, get('day'), tzH, get('minute'), get('second'))
 
-  return new Date(utcGuess + offset);
+  const offset = utcGuess - inTzMs
+  return new Date(utcGuess + offset)
 }
