@@ -49,7 +49,8 @@ export default function Poll() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [datePage, setDatePage] = useState(0);
-  const PAGE_SIZE = 7;
+  const isMobile = useIsMobile();
+  const PAGE_SIZE = isMobile ? 3 : 5
   const allDates = [...new Set(options.map((o) => o.date))].sort();
   const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
   const visibleDates = allDates.slice(
@@ -58,7 +59,6 @@ export default function Poll() {
   );
   const visibleOptions = options.filter((o) => visibleDates.includes(o.date));
   const [displayTz, setDisplayTz] = useState(getLocalTimezone());
-  const isMobile = useIsMobile();
   const [busySlots, setBusySlots] = useState<Record<string, string>>({});
   const [showCalendarImport, setShowCalendarImport] = useState(false);
 
@@ -91,7 +91,6 @@ export default function Poll() {
     busy: { start: string; end: string; summary?: string }[],
     respondentId: string,
   ) => {
-    console.log('applyBusyTimes called with', busy.length, 'busy events,', options.length, 'options')
     if (!poll) return;
     const newBusySlots: Record<string, string> = {};
 
@@ -116,11 +115,6 @@ export default function Poll() {
     }
 
     setBusySlots(newBusySlots);
-    console.log(
-      "newBusySlots:",
-      Object.keys(newBusySlots).length,
-      "busy slots set",
-    );
   };
 
   const loadAllAvailability = async () => {
@@ -569,7 +563,6 @@ export default function Poll() {
               const busyRaw = sessionStorage.getItem(
                 `calendar-busy-${poll.id}`,
               );
-              console.log("busyRaw from sessionStorage:", busyRaw);
               if (busyRaw) {
                 const busy: { start: string; end: string; summary?: string }[] =
                   JSON.parse(busyRaw);
@@ -712,7 +705,6 @@ function CalendarImportStep({
       const rangeEnd = new Date(dates[dates.length - 1] + "T23:59:59Z");
       const busyEvents = getEventsInRange(events, rangeStart, rangeEnd);
 
-      console.log("setting sessionStorage for poll:", poll.id);
       sessionStorage.setItem(
         `calendar-busy-${poll.id}`,
         JSON.stringify(
@@ -723,7 +715,6 @@ function CalendarImportStep({
           })),
         ),
       );
-      console.log("sessionStorage set, calling onDone");
       setLoading(false);
       onDone(); // ← only called on success
     } catch (err) {
