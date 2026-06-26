@@ -26,32 +26,41 @@ export default async function handler(req, res) {
   })
 
   const tokenData = await tokenRes.json()
-
   if (!tokenData.access_token) {
     return res.status(400).json({ error: 'Failed to get access token', details: tokenData })
   }
 
-  // Fetch busy times from Google Calendar freebusy API
-  const calRes = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${tokenData.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  // Fetch actual events with names
+  const eventsRes = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+    new URLSearchParams({
       timeMin,
       timeMax,
-      items: [{ id: 'primary' }],
-    })
-  })
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '250',
+    }),
+    {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      }
+    }
+  )
 
-  const calData = await calRes.json()
+  const eventsData = await eventsRes.json()
 
-  if (!calData.calendars) {
-    return res.status(400).json({ error: 'Failed to fetch calendar data', details: calData })
+  if (!eventsData.items) {
+    return res.status(400).json({ error: 'Failed to fetch events', details: eventsData })
   }
 
-  const busy = calData.calendars.primary?.busy ?? []
+  // Convert to busy format with real names
+  const busy = eventsData.items
+    .filter(event => event.status !== 'cancelled' && event.transparency !== 'transparent')
+    .map(event => ({
+      start: event.start?.dateTime ?? event.start?.date + 'T00:00:00Z',
+      end: event.end?.dateTime ?? event.end?.date + 'T23:59:59Z',
+      summary: event.summary ?? 'Busy',
+    }))
 
   return res.status(200).json({ busy })
 }
