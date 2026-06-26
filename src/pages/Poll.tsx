@@ -534,11 +534,11 @@ export default function Poll() {
           <CalendarImportStep
             onDone={() => {
               setShowCalendarImport(false);
-              // Apply busy times if calendar was imported
+              if (!respondent) return;
               const busyRaw = sessionStorage.getItem(
                 `calendar-busy-${poll.id}`,
               );
-              if (busyRaw && respondent) {
+              if (busyRaw) {
                 const busy: { start: string; end: string; summary?: string }[] =
                   JSON.parse(busyRaw);
                 sessionStorage.removeItem(`calendar-busy-${poll.id}`);
