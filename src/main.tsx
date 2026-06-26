@@ -8,14 +8,15 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import AuthGuard from "./components/AuthGuard";
 import "./index.css";
+import GoogleCalendarCallback from './pages/GoogleCalendarCallback'
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/create" element={<CreatePoll />} />
         <Route path="/poll/:id" element={<Poll />} />
+        <Route path="/calendar/google/callback" element={<GoogleCalendarCallback />} />
         <Route
           path="/dashboard"
           element={

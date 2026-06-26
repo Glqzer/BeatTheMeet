@@ -50,7 +50,7 @@ export default function Poll() {
   const [notFound, setNotFound] = useState(false);
   const [datePage, setDatePage] = useState(0);
   const isMobile = useIsMobile();
-  const PAGE_SIZE = isMobile ? 3 : 5
+  const PAGE_SIZE = isMobile ? 3 : 5;
   const allDates = [...new Set(options.map((o) => o.date))].sort();
   const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
   const visibleDates = allDates.slice(
@@ -667,6 +667,35 @@ function CalendarImportStep({
     });
   }, []);
 
+  const handleGoogleImport = () => {
+    const dates = options.map((o) => o.date).sort();
+    if (dates.length === 0) {
+      onDone();
+      return;
+    }
+
+    const timeMin = new Date(dates[0] + "T00:00:00Z").toISOString();
+    const timeMax = new Date(
+      dates[dates.length - 1] + "T23:59:59Z",
+    ).toISOString();
+
+    const state = btoa(JSON.stringify({ pollId: poll.id, timeMin, timeMax }));
+
+    const redirectUri = `${import.meta.env.VITE_REDIRECT_BASE_URL}/calendar/google/callback`;
+
+    const params = new URLSearchParams({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    });
+
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  };
+
   const handleICSImport = async () => {
     if (!icsUrl.trim()) return setError("Please enter a calendar URL.");
     setLoading(true);
@@ -887,7 +916,7 @@ function CalendarImportStep({
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <button
-          onClick={onDone}
+          onClick={handleGoogleImport}
           style={{
             padding: "12px",
             border: "1px solid var(--border)",
@@ -2118,31 +2147,39 @@ function parseMins(slotTime: string) {
 
 function slotToUTC(date: string, h: number, m: number, tz: string): Date {
   // Use Intl.DateTimeFormat instead of toLocaleString for cross-browser compatibility
-  const year = parseInt(date.slice(0, 4))
-  const month = parseInt(date.slice(5, 7)) - 1
-  const day = parseInt(date.slice(8, 10))
+  const year = parseInt(date.slice(0, 4));
+  const month = parseInt(date.slice(5, 7)) - 1;
+  const day = parseInt(date.slice(8, 10));
 
   // Start with a UTC date at the given wall clock time
-  const utcGuess = Date.UTC(year, month, day, h, m, 0)
+  const utcGuess = Date.UTC(year, month, day, h, m, 0);
 
   // Format this UTC moment in the target timezone using Intl
-  const fmt = new Intl.DateTimeFormat('en-US', {
+  const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
-  })
+  });
 
-  const parts = fmt.formatToParts(new Date(utcGuess))
-  const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0')
+  const parts = fmt.formatToParts(new Date(utcGuess));
+  const get = (type: string) =>
+    parseInt(parts.find((p) => p.type === type)?.value ?? "0");
 
-  const tzH = get('hour') === 24 ? 0 : get('hour')
-  const inTzMs = Date.UTC(get('year'), get('month') - 1, get('day'), tzH, get('minute'), get('second'))
+  const tzH = get("hour") === 24 ? 0 : get("hour");
+  const inTzMs = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    tzH,
+    get("minute"),
+    get("second"),
+  );
 
-  const offset = utcGuess - inTzMs
-  return new Date(utcGuess + offset)
+  const offset = utcGuess - inTzMs;
+  return new Date(utcGuess + offset);
 }
