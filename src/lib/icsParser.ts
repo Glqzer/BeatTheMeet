@@ -82,12 +82,12 @@ function parseICSDate(line: string): Date | null {
     }
 
     if (tz) {
-      // Convert from named timezone to UTC
+      // Wall clock time in source timezone → UTC
       const naive = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${String(s).padStart(2, '0')}`
-      const asUTC = new Date(naive + 'Z')
-      const inTz = new Date(asUTC.toLocaleString('en-US', { timeZone: tz }))
-      const offset = asUTC.getTime() - inTz.getTime()
-      return new Date(asUTC.getTime() + offset)
+      const utcGuess = new Date(naive + 'Z').getTime()
+      const inTzDate = new Date(new Date(utcGuess).toLocaleString('en-US', { timeZone: tz }))
+      const offset = utcGuess - inTzDate.getTime()
+      return new Date(utcGuess + offset)
     }
 
     // No timezone — treat as local
