@@ -89,7 +89,6 @@ export default function Poll() {
     busy: { start: string; end: string; summary?: string }[],
     respondentId: string,
   ) => {
-    const availableOptionIds: string[] = [];
     const newBusySlots: Record<string, string> = {};
 
     for (const option of options) {
@@ -108,25 +107,10 @@ export default function Poll() {
 
       if (busyEvent) {
         newBusySlots[option.id] = busyEvent.summary ?? "Busy";
-      } else {
-        availableOptionIds.push(option.id);
       }
     }
 
     setBusySlots(newBusySlots);
-    if (availableOptionIds.length === 0) return;
-
-    setMyAvailability(new Set(availableOptionIds));
-
-    await supabase.from("availability").upsert(
-      availableOptionIds.map((id) => ({
-        respondent_id: respondentId,
-        option_id: id,
-      })),
-      { onConflict: "respondent_id,option_id", ignoreDuplicates: true },
-    );
-
-    await loadAllAvailability();
   };
 
   const loadAllAvailability = async () => {
@@ -300,37 +284,26 @@ export default function Poll() {
               </p>
             )}
             {respondent && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  marginTop: 12,
-                }}
-              >
-                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                  Filling as{" "}
-                  <strong style={{ color: "var(--text)" }}>
-                    {respondent.name}
-                  </strong>{" "}
-                  ({respondent.email})
-                </span>
-                <button
-                  onClick={deleteResponse}
-                  style={{
-                    fontSize: 12,
-                    color: "var(--accent)",
-                    background: "var(--accent-light)",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "3px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Delete my response
-                </button>
-              </div>
-            )}
+  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+      Filling as <strong style={{ color: "var(--text)" }}>{respondent.name}</strong> ({respondent.email})
+    </span>
+    {Object.keys(busySlots).length > 0 && (
+      <button
+        onClick={() => setBusySlots({})}
+        style={{ fontSize: 12, color: "var(--text-secondary)", background: "var(--border)", border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+      >
+        Clear Imported Calendar
+      </button>
+    )}
+    <button
+      onClick={deleteResponse}
+      style={{ fontSize: 12, color: "var(--accent)", background: "var(--accent-light)", border: "none", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+    >
+      Delete My Response
+    </button>
+  </div>
+)}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <CopyLinkButton />
@@ -596,171 +569,339 @@ function Popup({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CalendarImportStep({ onDone, poll, options }: {
-  onDone: () => void
-  poll: Poll
-  options: PollOption[]
+function CalendarImportStep({
+  onDone,
+  poll,
+  options,
+}: {
+  onDone: () => void;
+  poll: Poll;
+  options: PollOption[];
 }) {
-  const [showICS, setShowICS] = useState(false)
-  const [icsUrl, setIcsUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [userId, setUserId] = useState<string | null>(null)
+  const [showICS, setShowICS] = useState(false);
+  const [icsUrl, setIcsUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
-      setUserId(data.user.id)
+      if (!data.user) return;
+      setUserId(data.user.id);
 
       const { data: settings } = await supabase
-        .from('user_settings')
-        .select('ics_url')
-        .eq('user_id', data.user.id)
-        .maybeSingle()
+        .from("user_settings")
+        .select("ics_url")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
 
-      if (settings?.ics_url) setIcsUrl(settings.ics_url)
-    })
-  }, [])
+      if (settings?.ics_url) setIcsUrl(settings.ics_url);
+    });
+  }, []);
 
   const handleICSImport = async () => {
-    if (!icsUrl.trim()) return setError('Please enter a calendar URL.')
-    setLoading(true)
-    setError('')
+    if (!icsUrl.trim()) return setError("Please enter a calendar URL.");
+    setLoading(true);
+    setError("");
 
     try {
       if (userId) {
-        await supabase.from('user_settings').upsert({
+        await supabase.from("user_settings").upsert({
           user_id: userId,
           ics_url: icsUrl.trim(),
-          updated_at: new Date().toISOString()
-        })
+          updated_at: new Date().toISOString(),
+        });
       }
 
-      const res = await fetch(`/api/ics-proxy?url=${encodeURIComponent(icsUrl.trim())}`)
+      const res = await fetch(
+        `/api/ics-proxy?url=${encodeURIComponent(icsUrl.trim())}`,
+      );
 
       if (!res.ok) {
-        const err = await res.json()
-        setError(err.error ?? 'Failed to fetch calendar.')
-        setLoading(false)
-        return
+        const err = await res.json();
+        setError(err.error ?? "Failed to fetch calendar.");
+        setLoading(false);
+        return;
       }
 
-      const icsText = await res.text()
-      const { parseICS, getEventsInRange } = await import('../lib/icsParser')
-      const events = parseICS(icsText)
+      const icsText = await res.text();
+      const { parseICS, getEventsInRange } = await import("../lib/icsParser");
+      const events = parseICS(icsText);
 
-      const dates = options.map(o => o.date).sort()
-      if (dates.length === 0) { onDone(); return }
+      const dates = options.map((o) => o.date).sort();
+      if (dates.length === 0) {
+        onDone();
+        return;
+      }
 
-      const rangeStart = new Date(dates[0] + 'T00:00:00Z')
-      const rangeEnd = new Date(dates[dates.length - 1] + 'T23:59:59Z')
-      const busyEvents = getEventsInRange(events, rangeStart, rangeEnd)
+      const rangeStart = new Date(dates[0] + "T00:00:00Z");
+      const rangeEnd = new Date(dates[dates.length - 1] + "T23:59:59Z");
+      const busyEvents = getEventsInRange(events, rangeStart, rangeEnd);
 
       sessionStorage.setItem(
         `calendar-busy-${poll.id}`,
-        JSON.stringify(busyEvents.map(e => ({
-          start: e.start.toISOString(),
-          end: e.end.toISOString(),
-          summary: e.summary
-        })))
-      )
+        JSON.stringify(
+          busyEvents.map((e) => ({
+            start: e.start.toISOString(),
+            end: e.end.toISOString(),
+            summary: e.summary,
+          })),
+        ),
+      );
 
-      onDone()
+      onDone();
     } catch (err) {
-      setError('Something went wrong. Please check the URL and try again.')
+      setError("Something went wrong. Please check the URL and try again.");
     }
 
-    setLoading(false)
-  }
+    setLoading(false);
+  };
 
   if (showICS) {
     return (
       <div>
         <button
-          onClick={() => { setShowICS(false); setError('') }}
-          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}
+          onClick={() => {
+            setShowICS(false);
+            setError("");
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            fontSize: 13,
+            padding: 0,
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
         >
           ← Back
         </button>
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            marginBottom: 8,
+            color: "var(--text)",
+          }}
+        >
           Import from ICS URL
         </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>
+        <p
+          style={{
+            color: "var(--text-secondary)",
+            fontSize: 14,
+            marginBottom: 8,
+          }}
+        >
           Paste your calendar's secret ICS feed URL.
         </p>
-        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', marginBottom: 16, border: '1px solid var(--border)' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 8 }}>Where to find your ICS URL:</p>
-          <ul style={{ color: 'var(--text-secondary)', fontSize: 13, paddingLeft: 16, lineHeight: 2, margin: 0 }}>
-            <li><strong style={{ color: 'var(--text)' }}>Google Calendar</strong> — Settings → your calendar → Secret address in iCal format</li>
-            <li><strong style={{ color: 'var(--text)' }}>Outlook</strong> — Calendar → Shared calendars → Publish → ICS link</li>
-            <li><strong style={{ color: 'var(--text)' }}>Apple Calendar</strong> — Calendar → Get Info → Share Link</li>
+        <div
+          style={{
+            background: "var(--bg)",
+            borderRadius: 8,
+            padding: "12px 14px",
+            marginBottom: 16,
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--text)",
+              marginBottom: 8,
+            }}
+          >
+            Where to find your ICS URL:
+          </p>
+          <ul
+            style={{
+              color: "var(--text-secondary)",
+              fontSize: 13,
+              paddingLeft: 16,
+              lineHeight: 2,
+              margin: 0,
+            }}
+          >
+            <li>
+              <strong style={{ color: "var(--text)" }}>Google Calendar</strong>{" "}
+              — Settings → your calendar → Secret address in iCal format
+            </li>
+            <li>
+              <strong style={{ color: "var(--text)" }}>Outlook</strong> —
+              Calendar → Shared calendars → Publish → ICS link
+            </li>
+            <li>
+              <strong style={{ color: "var(--text)" }}>Apple Calendar</strong> —
+              Calendar → Get Info → Share Link
+            </li>
           </ul>
         </div>
         <input
           type="url"
           placeholder="https://calendar.google.com/calendar/ical/..."
           value={icsUrl}
-          onChange={e => setIcsUrl(e.target.value)}
-          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', color: 'var(--text)', fontSize: 13, marginBottom: 12 }}
+          onChange={(e) => setIcsUrl(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "var(--bg)",
+            color: "var(--text)",
+            fontSize: 13,
+            marginBottom: 12,
+          }}
         />
-        {error && <p style={{ color: 'var(--accent)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+        {error && (
+          <p style={{ color: "var(--accent)", fontSize: 13, marginBottom: 12 }}>
+            {error}
+          </p>
+        )}
         <button
           onClick={handleICSImport}
           disabled={loading}
-          style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, var(--primary), #4f46e5)', color: 'white', border: 'none', borderRadius: 10, cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 14, opacity: loading ? 0.7 : 1 }}
+          style={{
+            width: "100%",
+            padding: "12px",
+            background: "linear-gradient(135deg, var(--primary), #4f46e5)",
+            color: "white",
+            border: "none",
+            borderRadius: 10,
+            cursor: loading ? "default" : "pointer",
+            fontWeight: 600,
+            fontSize: 14,
+            opacity: loading ? 0.7 : 1,
+          }}
         >
-          {loading ? 'Importing...' : 'Import calendar'}
+          {loading ? "Importing..." : "Import calendar"}
         </button>
         {userId && icsUrl && (
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 10, textAlign: 'center' }}>
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              marginTop: 10,
+              textAlign: "center",
+            }}
+          >
             ✓ Your calendar URL will be saved for next time
           </p>
         )}
       </div>
-    )
+    );
   }
 
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
+      <h2
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          marginBottom: 8,
+          color: "var(--text)",
+        }}
+      >
         Import your calendar
       </h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
+      <p
+        style={{
+          color: "var(--text-secondary)",
+          fontSize: 14,
+          marginBottom: 24,
+        }}
+      >
         Auto-fill your busy times so you only mark when you're actually free.
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <button
           onClick={onDone}
-          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          style={{
+            padding: "12px",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            cursor: "pointer",
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
         >
           <span>🗓</span> Import from Google Calendar
         </button>
         <button
           onClick={onDone}
-          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          style={{
+            padding: "12px",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            cursor: "pointer",
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
         >
           <span>📅</span> Import from Outlook
         </button>
         <button
           onClick={() => setShowICS(true)}
-          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          style={{
+            padding: "12px",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            cursor: "pointer",
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
         >
           <span>📋</span> Import from ICS URL
           {icsUrl && (
-            <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: 99, padding: '2px 8px' }}>
+            <span
+              style={{
+                fontSize: 11,
+                background: "var(--primary-light)",
+                color: "var(--primary)",
+                borderRadius: 99,
+                padding: "2px 8px",
+              }}
+            >
               Saved
             </span>
           )}
         </button>
         <button
           onClick={onDone}
-          style={{ padding: '12px', border: 'none', borderRadius: 10, cursor: 'pointer', background: 'none', color: 'var(--text-secondary)', fontSize: 13 }}
+          style={{
+            padding: "12px",
+            border: "none",
+            borderRadius: 10,
+            cursor: "pointer",
+            background: "none",
+            color: "var(--text-secondary)",
+            fontSize: 13,
+          }}
         >
           Skip for now
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 function BackToDashboardButton() {
@@ -1131,8 +1272,8 @@ function AvailabilityGrid({
     return `${display}:${String(m).padStart(2, "0")} ${period}`;
   };
 
-  const cellHeight = isMobile ? 28 : 20;
-  const cellHeightLarge = isMobile ? 48 : 40;
+  const cellHeight = isMobile ? 36 : 28;
+  const cellHeightLarge = isMobile ? 56 : 48;
 
   if (poll.type === "date_only") {
     return (
@@ -1495,8 +1636,8 @@ function HeatmapGrid({
   displayTz: string;
 }) {
   const isMobile = useIsMobile();
-  const cellHeight = isMobile ? 28 : 20;
-  const cellHeightLarge = isMobile ? 48 : 40;
+  const cellHeight = isMobile ? 36 : 28;
+  const cellHeightLarge = isMobile ? 56 : 48;
   const getColor = (count: number) => {
     if (count === 0 || totalRespondents === 0) return "var(--border)";
     const ratio = count / totalRespondents;
@@ -1539,7 +1680,7 @@ function HeatmapGrid({
                     <div
                       style={{
                         width: "100%",
-                        height: 40,
+                        height: cellHeightLarge,
                         borderRadius: 6,
                         background: getColor(allAvailability[opt.id] ?? 0),
                         transition: "background 0.3s",
@@ -1658,7 +1799,7 @@ function HeatmapGrid({
                         <div
                           style={{
                             width: "100%",
-                            height: 20,
+                            height: cellHeight,
                             borderRadius: 4,
                             background: opt
                               ? getColor(allAvailability[opt.id] ?? 0)
