@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   if (!code) return res.status(400).json({ error: 'No code provided' })
   if (!timeMin || !timeMax) return res.status(400).json({ error: 'Missing time range' })
 
-  const redirectUri = `${import.meta.env.VITE_REDIRECT_BASE_URL}/calendar/google/callback`
+  const redirectUri = `${process.env.REDIRECT_BASE_URL}/calendar/google/callback`
 
   // Exchange code for access token
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
