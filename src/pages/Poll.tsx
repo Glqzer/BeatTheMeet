@@ -58,6 +58,7 @@ export default function Poll() {
   const visibleOptions = options.filter((o) => visibleDates.includes(o.date));
   const [displayTz, setDisplayTz] = useState(getLocalTimezone());
   const isMobile = useIsMobile();
+  const [busySlots, setBusySlots] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -83,6 +84,50 @@ export default function Poll() {
     };
     load();
   }, [id]);
+
+  const applyBusyTimes = async (
+    busy: { start: string; end: string; summary?: string }[],
+    respondentId: string,
+  ) => {
+    const availableOptionIds: string[] = [];
+    const newBusySlots: Record<string, string> = {};
+
+    for (const option of options) {
+      if (!option.slot_time) continue;
+      const [h, m] = option.slot_time.split(":").map(Number);
+      const slotStart = new Date(
+        `${option.date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`,
+      );
+      const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
+
+      const busyEvent = busy.find((b) => {
+        const busyStart = new Date(b.start);
+        const busyEnd = new Date(b.end);
+        return slotStart < busyEnd && slotEnd > busyStart;
+      });
+
+      if (busyEvent) {
+        newBusySlots[option.id] = busyEvent.summary ?? "Busy";
+      } else {
+        availableOptionIds.push(option.id);
+      }
+    }
+
+    setBusySlots(newBusySlots);
+    if (availableOptionIds.length === 0) return;
+
+    setMyAvailability(new Set(availableOptionIds));
+
+    await supabase.from("availability").upsert(
+      availableOptionIds.map((id) => ({
+        respondent_id: respondentId,
+        option_id: id,
+      })),
+      { onConflict: "respondent_id,option_id", ignoreDuplicates: true },
+    );
+
+    await loadAllAvailability();
+  };
 
   const loadAllAvailability = async () => {
     if (!id) return;
@@ -443,6 +488,7 @@ export default function Poll() {
             myAvailability={myAvailability}
             onToggle={toggleCell}
             displayTz={displayTz}
+            busySlots={busySlots}
           />
           <HeatmapGrid
             poll={poll}
@@ -456,7 +502,11 @@ export default function Poll() {
 
       {step === "calendar_import" && (
         <Popup>
-          <CalendarImportStep onDone={() => setStep("identity")} />
+          <CalendarImportStep
+            onDone={() => setStep("identity")}
+            poll={poll}
+            options={options}
+          />
         </Popup>
       )}
       {step === "identity" && (
@@ -468,6 +518,16 @@ export default function Poll() {
               setDisplayTz(tz);
               loadMyAvailability(r.id);
               setStep("grid");
+
+              const busyRaw = sessionStorage.getItem(
+                `calendar-busy-${poll.id}`,
+              );
+              if (busyRaw) {
+                const busy: { start: string; end: string; summary?: string }[] =
+                  JSON.parse(busyRaw);
+                sessionStorage.removeItem(`calendar-busy-${poll.id}`);
+                applyBusyTimes(busy, r.id);
+              }
             }}
           />
         </Popup>
@@ -536,83 +596,171 @@ function Popup({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CalendarImportStep({ onDone }: { onDone: () => void }) {
+function CalendarImportStep({ onDone, poll, options }: {
+  onDone: () => void
+  poll: Poll
+  options: PollOption[]
+}) {
+  const [showICS, setShowICS] = useState(false)
+  const [icsUrl, setIcsUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      setUserId(data.user.id)
+
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('ics_url')
+        .eq('user_id', data.user.id)
+        .maybeSingle()
+
+      if (settings?.ics_url) setIcsUrl(settings.ics_url)
+    })
+  }, [])
+
+  const handleICSImport = async () => {
+    if (!icsUrl.trim()) return setError('Please enter a calendar URL.')
+    setLoading(true)
+    setError('')
+
+    try {
+      if (userId) {
+        await supabase.from('user_settings').upsert({
+          user_id: userId,
+          ics_url: icsUrl.trim(),
+          updated_at: new Date().toISOString()
+        })
+      }
+
+      const res = await fetch(`/api/ics-proxy?url=${encodeURIComponent(icsUrl.trim())}`)
+
+      if (!res.ok) {
+        const err = await res.json()
+        setError(err.error ?? 'Failed to fetch calendar.')
+        setLoading(false)
+        return
+      }
+
+      const icsText = await res.text()
+      const { parseICS, getEventsInRange } = await import('../lib/icsParser')
+      const events = parseICS(icsText)
+
+      const dates = options.map(o => o.date).sort()
+      if (dates.length === 0) { onDone(); return }
+
+      const rangeStart = new Date(dates[0] + 'T00:00:00Z')
+      const rangeEnd = new Date(dates[dates.length - 1] + 'T23:59:59Z')
+      const busyEvents = getEventsInRange(events, rangeStart, rangeEnd)
+
+      sessionStorage.setItem(
+        `calendar-busy-${poll.id}`,
+        JSON.stringify(busyEvents.map(e => ({
+          start: e.start.toISOString(),
+          end: e.end.toISOString(),
+          summary: e.summary
+        })))
+      )
+
+      onDone()
+    } catch (err) {
+      setError('Something went wrong. Please check the URL and try again.')
+    }
+
+    setLoading(false)
+  }
+
+  if (showICS) {
+    return (
+      <div>
+        <button
+          onClick={() => { setShowICS(false); setError('') }}
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          ← Back
+        </button>
+        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
+          Import from ICS URL
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>
+          Paste your calendar's secret ICS feed URL.
+        </p>
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', marginBottom: 16, border: '1px solid var(--border)' }}>
+          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 8 }}>Where to find your ICS URL:</p>
+          <ul style={{ color: 'var(--text-secondary)', fontSize: 13, paddingLeft: 16, lineHeight: 2, margin: 0 }}>
+            <li><strong style={{ color: 'var(--text)' }}>Google Calendar</strong> — Settings → your calendar → Secret address in iCal format</li>
+            <li><strong style={{ color: 'var(--text)' }}>Outlook</strong> — Calendar → Shared calendars → Publish → ICS link</li>
+            <li><strong style={{ color: 'var(--text)' }}>Apple Calendar</strong> — Calendar → Get Info → Share Link</li>
+          </ul>
+        </div>
+        <input
+          type="url"
+          placeholder="https://calendar.google.com/calendar/ical/..."
+          value={icsUrl}
+          onChange={e => setIcsUrl(e.target.value)}
+          style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', color: 'var(--text)', fontSize: 13, marginBottom: 12 }}
+        />
+        {error && <p style={{ color: 'var(--accent)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+        <button
+          onClick={handleICSImport}
+          disabled={loading}
+          style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, var(--primary), #4f46e5)', color: 'white', border: 'none', borderRadius: 10, cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 14, opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? 'Importing...' : 'Import calendar'}
+        </button>
+        {userId && icsUrl && (
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 10, textAlign: 'center' }}>
+            ✓ Your calendar URL will be saved for next time
+          </p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div>
-      <h2
-        style={{
-          fontSize: 20,
-          fontWeight: 700,
-          marginBottom: 8,
-          color: "var(--text)",
-        }}
-      >
+      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
         Import your calendar
       </h2>
-      <p
-        style={{
-          color: "var(--text-secondary)",
-          fontSize: 14,
-          marginBottom: 24,
-        }}
-      >
-        Sync your calendar to auto-fill your availability, or skip to fill in
-        manually.
+      <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
+        Auto-fill your busy times so you only mark when you're actually free.
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <button
           onClick={onDone}
-          style={{
-            padding: "12px",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            cursor: "pointer",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontWeight: 500,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}
+          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <span>🗓</span> Import from Google Calendar
         </button>
         <button
           onClick={onDone}
-          style={{
-            padding: "12px",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            cursor: "pointer",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontWeight: 500,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}
+          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <span>📅</span> Import from Outlook
         </button>
         <button
+          onClick={() => setShowICS(true)}
+          style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <span>📋</span> Import from ICS URL
+          {icsUrl && (
+            <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: 99, padding: '2px 8px' }}>
+              Saved
+            </span>
+          )}
+        </button>
+        <button
           onClick={onDone}
-          style={{
-            padding: "12px",
-            border: "none",
-            borderRadius: 10,
-            cursor: "pointer",
-            background: "none",
-            color: "var(--text-secondary)",
-            fontSize: 13,
-          }}
+          style={{ padding: '12px', border: 'none', borderRadius: 10, cursor: 'pointer', background: 'none', color: 'var(--text-secondary)', fontSize: 13 }}
         >
           Skip for now
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 function BackToDashboardButton() {
@@ -827,12 +975,14 @@ function AvailabilityGrid({
   myAvailability,
   onToggle,
   displayTz,
+  busySlots,
 }: {
   poll: Poll;
   options: PollOption[];
   myAvailability: Set<string>;
   onToggle: (optionId: string) => void;
   displayTz: string;
+  busySlots: Record<string, string>;
 }) {
   const isMobile = useIsMobile();
   const [isDragging, setIsDragging] = useState(false);
@@ -987,7 +1137,12 @@ function AvailabilityGrid({
   if (poll.type === "date_only") {
     return (
       <div>
-        <GridHeader title="Your availability" legend={<AvailableLegend />} />
+        <GridHeader
+          title="Your availability"
+          legend={
+            <AvailableLegend hasBusy={Object.keys(busySlots).length > 0} />
+          }
+        />
         {isMobile && (
           <p
             style={{
@@ -1039,18 +1194,29 @@ function AvailabilityGrid({
                       onMouseEnter={(e) => handleMouseEnter(opt.id, opt, e)}
                       onMouseLeave={() => setHoveredOption(null)}
                       onClick={() => isMobile && handleMobileTap(opt.id, opt)}
-                      style={{
-                        width: "100%",
-                        height: cellHeightLarge,
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        background: myAvailability.has(opt.id)
-                          ? "#22c55e"
-                          : "var(--border)",
-                        transition: "background 0.1s",
-                        userSelect: "none",
-                      }}
-                    />
+                      style={getCellStyle(opt.id, cellHeightLarge)}
+                    >
+                      {busySlots[opt.id] && !myAvailability.has(opt.id) && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: 8,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            fontSize: 11,
+                            color: "#ef4444",
+                            fontWeight: 500,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: "calc(100% - 12px)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {busySlots[opt.id]}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 ))}
               </tr>
@@ -1091,9 +1257,67 @@ function AvailabilityGrid({
 
   const hours = Object.keys(slotsByHour);
 
+  const getCellStyle = (optId: string, height: number): React.CSSProperties => {
+    const isAvailable = myAvailability.has(optId);
+    const isBusy = busySlots[optId] !== undefined;
+    const isTapStartCell = tapStart?.id === optId;
+
+    if (isTapStartCell)
+      return {
+        width: "100%",
+        height,
+        borderRadius: 4,
+        cursor: "pointer",
+        background: "var(--primary)",
+        userSelect: "none",
+        transition: "background 0.1s",
+        position: "relative",
+        overflow: "hidden",
+      };
+    if (isAvailable)
+      return {
+        width: "100%",
+        height,
+        borderRadius: 4,
+        cursor: "pointer",
+        background: "#22c55e",
+        userSelect: "none",
+        transition: "background 0.1s",
+        position: "relative",
+        overflow: "hidden",
+      };
+    if (isBusy)
+      return {
+        width: "100%",
+        height,
+        borderRadius: 4,
+        cursor: "pointer",
+        background: "#fee2e2",
+        borderLeft: "3px solid #ef4444",
+        userSelect: "none",
+        transition: "background 0.1s",
+        position: "relative",
+        overflow: "hidden",
+      };
+    return {
+      width: "100%",
+      height,
+      borderRadius: 4,
+      cursor: "pointer",
+      background: "var(--border)",
+      userSelect: "none",
+      transition: "background 0.1s",
+      position: "relative",
+      overflow: "hidden",
+    };
+  };
+
   return (
     <div style={{ position: "relative" }} onMouseMove={handleMouseMove}>
-      <GridHeader title="Your availability" legend={<AvailableLegend />} />
+      <GridHeader
+        title="Your availability"
+        legend={<AvailableLegend hasBusy={Object.keys(busySlots).length > 0} />}
+      />
 
       {/* Mobile instructions */}
       {isMobile && (
@@ -1217,23 +1441,30 @@ function AvailabilityGrid({
                             onClick={() =>
                               isMobile && handleMobileTap(opt.id, opt)
                             }
-                            style={{
-                              width: "100%",
-                              height: cellHeight,
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              background: isTapStart
-                                ? "var(--primary)"
-                                : myAvailability.has(opt.id)
-                                  ? "#22c55e"
-                                  : "var(--border)",
-                              transition: "background 0.1s",
-                              userSelect: "none",
-                              outline: isTapStart
-                                ? "2px solid var(--primary)"
-                                : "none",
-                            }}
-                          />
+                            style={getCellStyle(opt.id, cellHeight)}
+                          >
+                            {busySlots[opt.id] &&
+                              !myAvailability.has(opt.id) && (
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    left: 6,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    fontSize: 10,
+                                    color: "#ef4444",
+                                    fontWeight: 500,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    maxWidth: "calc(100% - 10px)",
+                                    pointerEvents: "none",
+                                  }}
+                                >
+                                  {busySlots[opt.id]}
+                                </span>
+                              )}
+                          </div>
                         ) : (
                           <div style={{ height: cellHeight }} />
                         )}
@@ -1476,26 +1707,44 @@ function GridHeader({
   );
 }
 
-function AvailableLegend() {
+function AvailableLegend({ hasBusy }: { hasBusy?: boolean }) {
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6,
+        gap: 10,
         fontSize: 12,
         color: "var(--text-secondary)",
+        flexWrap: "wrap",
+        justifyContent: "flex-end",
       }}
     >
-      <div
-        style={{
-          width: 12,
-          height: 12,
-          borderRadius: 3,
-          background: "#22c55e",
-        }}
-      />
-      Available
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            background: "#22c55e",
+          }}
+        />
+        Available
+      </div>
+      {hasBusy && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 3,
+              background: "#fee2e2",
+              borderLeft: "3px solid #ef4444",
+            }}
+          />
+          Busy
+        </div>
+      )}
     </div>
   );
 }
