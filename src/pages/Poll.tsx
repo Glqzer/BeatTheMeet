@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { parseICS, getEventsInRange } from "../lib/icsParser";
 import {
   COMMON_TIMEZONES,
   getLocalTimezone,
@@ -688,11 +689,10 @@ function CalendarImportStep({
         const err = await res.json();
         setError(err.error ?? "Failed to fetch calendar.");
         setLoading(false);
-        return;
+        return; // ← must return here, not fall through to onDone
       }
 
       const icsText = await res.text();
-      const { parseICS, getEventsInRange } = await import("../lib/icsParser");
       const events = parseICS(icsText);
 
       const dates = options.map((o) => o.date).sort();
@@ -716,12 +716,14 @@ function CalendarImportStep({
         ),
       );
 
-      onDone();
+      setLoading(false);
+      onDone(); // ← only called on success
     } catch (err) {
+      console.error(err);
       setError("Something went wrong. Please check the URL and try again.");
+      setLoading(false);
+      // no onDone() here
     }
-
-    setLoading(false);
   };
 
   if (showICS) {
