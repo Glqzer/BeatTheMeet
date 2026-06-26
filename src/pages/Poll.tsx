@@ -59,6 +59,7 @@ export default function Poll() {
   const [displayTz, setDisplayTz] = useState(getLocalTimezone());
   const isMobile = useIsMobile();
   const [busySlots, setBusySlots] = useState<Record<string, string>>({});
+  const [showCalendarImport, setShowCalendarImport] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -302,6 +303,20 @@ export default function Poll() {
                   </strong>{" "}
                   ({respondent.email})
                 </span>
+                <button
+                  onClick={() => setShowCalendarImport(true)}
+                  style={{
+                    fontSize: 12,
+                    color: "var(--primary)",
+                    background: "var(--primary-light)",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Import External Calendar
+                </button>
                 {Object.keys(busySlots).length > 0 && (
                   <button
                     onClick={() => setBusySlots({})}
@@ -507,6 +522,27 @@ export default function Poll() {
         <Popup>
           <CalendarImportStep
             onDone={() => setStep("identity")}
+            poll={poll}
+            options={options}
+          />
+        </Popup>
+      )}
+      {showCalendarImport && (
+        <Popup>
+          <CalendarImportStep
+            onDone={() => {
+              setShowCalendarImport(false);
+              // Apply busy times if calendar was imported
+              const busyRaw = sessionStorage.getItem(
+                `calendar-busy-${poll.id}`,
+              );
+              if (busyRaw && respondent) {
+                const busy: { start: string; end: string; summary?: string }[] =
+                  JSON.parse(busyRaw);
+                sessionStorage.removeItem(`calendar-busy-${poll.id}`);
+                applyBusyTimes(busy, respondent.id);
+              }
+            }}
             poll={poll}
             options={options}
           />
