@@ -1885,44 +1885,23 @@ function GridHeader({
 
 function AvailableLegend({ hasBusy }: { hasBusy?: boolean }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 12,
-        color: "var(--text-secondary)",
-        flexWrap: "wrap",
-        justifyContent: "flex-end",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <div
-          style={{
-            width: 12,
-            height: 12,
-            borderRadius: 3,
-            background: "#22c55e",
-          }}
-        />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ width: 12, height: 12, borderRadius: 3, background: '#22c55e' }} />
         Available
       </div>
       {hasBusy && (
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 3,
-              background: "#fee2e2",
-              borderLeft: "3px solid #ef4444",
-            }}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#fee2e2', borderLeft: '3px solid #ef4444' }} />
           Busy
         </div>
       )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--border)' }} />
+        {hasBusy ? 'Unconfirmed' : 'Unavailable'}
+      </div>
     </div>
-  );
+  )
 }
 
 function HeatmapLegend() {
