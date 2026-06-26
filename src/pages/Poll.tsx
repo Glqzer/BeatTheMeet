@@ -667,6 +667,14 @@ function CalendarImportStep({
     });
   }, []);
 
+  useEffect(() => {
+    const busyRaw = sessionStorage.getItem(`calendar-busy-${poll.id}`);
+    if (busyRaw) {
+      // Calendar already imported, skip straight to identity
+      onDone();
+    }
+  }, []);
+
   const handleGoogleImport = () => {
     const dates = options.map((o) => o.date).sort();
     if (dates.length === 0) {
