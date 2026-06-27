@@ -24,22 +24,32 @@ export const COMMON_TIMEZONES = [
 ]
 
 export function getLocalTimezone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (!tz) return 'UTC'
+    new Intl.DateTimeFormat('en-US', { timeZone: tz }).formatToParts(new Date())
+    return tz
+  } catch {
+    return 'UTC'
+  }
 }
 
 export function getLocalTimezoneLabel(): string {
-  const tz = getLocalTimezone()
-  const match = COMMON_TIMEZONES.find(t => t.value === tz)
-  if (match) return match.label
+  try {
+    const tz = getLocalTimezone()
+    const match = COMMON_TIMEZONES.find(t => t.value === tz)
+    if (match) return match.label
 
-  // For unlisted timezones, show current offset (DST-aware)
-  const now = new Date()
-  const offsetStr = now.toLocaleTimeString('en-US', {
-    timeZone: tz,
-    timeZoneName: 'shortOffset'
-  }).split(' ').pop() ?? ''
+    const now = new Date()
+    const offsetStr = now.toLocaleTimeString('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    }).split(' ').pop() ?? ''
 
-  return `${tz} (${offsetStr})`
+    return `${tz} (${offsetStr})`
+  } catch {
+    return 'UTC'
+  }
 }
 
 // Convert a slot time from one timezone to another

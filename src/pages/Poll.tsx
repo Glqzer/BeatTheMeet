@@ -58,7 +58,18 @@ export default function Poll() {
     (datePage + 1) * PAGE_SIZE,
   );
   const visibleOptions = options.filter((o) => visibleDates.includes(o.date));
-  const [displayTz, setDisplayTz] = useState(getLocalTimezone());
+  const [displayTz, setDisplayTz] = useState(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz) return "UTC";
+      new Intl.DateTimeFormat("en-US", { timeZone: tz }).formatToParts(
+        new Date(),
+      );
+      return tz;
+    } catch {
+      return "UTC";
+    }
+  });
   const [busySlots, setBusySlots] = useState<Record<string, string>>({});
   const [showCalendarImport, setShowCalendarImport] = useState(false);
   const [allRespondents, setAllRespondents] = useState<
@@ -1582,18 +1593,27 @@ function AvailabilityGrid({
   for (const opt of options) {
     if (!opt.slot_time) continue;
     const parts = opt.slot_time.split(":").map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) continue;
     const h = parts[0];
     const m = parts[1];
     const mins = h * 60 + m;
-    const convertedLabel = formatSlotInTz(
-      opt.date,
-      opt.slot_time,
-      poll.timezone,
-      displayTz,
-    );
+
+    let convertedLabel: string;
+    try {
+      convertedLabel = formatSlotInTz(
+        opt.date,
+        opt.slot_time,
+        poll.timezone,
+        displayTz,
+      );
+    } catch {
+      convertedLabel = `${h < 12 ? (h === 0 ? 12 : h) : h === 12 ? 12 : h - 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+    }
+
     const [timePart, period] = convertedLabel.split(" ");
     const displayH = timePart.split(":")[0];
     const hourKey = `${displayH} ${period}`;
+
     if (!slotsByHour[hourKey]) slotsByHour[hourKey] = [];
     let slot = slotsByHour[hourKey].find((s) => s.mins === mins);
     if (!slot) {
@@ -1990,17 +2010,23 @@ function HeatmapGrid({
   for (const opt of options) {
     if (!opt.slot_time) continue;
     const parts = opt.slot_time.split(":").map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) continue;
     const h = parts[0];
     const m = parts[1];
     const mins = h * 60 + m;
 
-    // Use converted time for the hour label
-    const convertedLabel = formatSlotInTz(
-      opt.date,
-      opt.slot_time,
-      poll.timezone,
-      displayTz,
-    );
+    let convertedLabel: string;
+    try {
+      convertedLabel = formatSlotInTz(
+        opt.date,
+        opt.slot_time,
+        poll.timezone,
+        displayTz,
+      );
+    } catch {
+      convertedLabel = `${h < 12 ? (h === 0 ? 12 : h) : h === 12 ? 12 : h - 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+    }
+
     const [timePart, period] = convertedLabel.split(" ");
     const displayH = timePart.split(":")[0];
     const hourKey = `${displayH} ${period}`;
@@ -2341,40 +2367,44 @@ function parseMins(slotTime: string) {
 }
 
 function slotToUTC(date: string, h: number, m: number, tz: string): Date {
-  // Use Intl.DateTimeFormat instead of toLocaleString for cross-browser compatibility
+  if (!date || isNaN(h) || isNaN(m)) return new Date(NaN);
+
   const year = parseInt(date.slice(0, 4));
   const month = parseInt(date.slice(5, 7)) - 1;
   const day = parseInt(date.slice(8, 10));
 
-  // Start with a UTC date at the given wall clock time
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return new Date(NaN);
+
   const utcGuess = Date.UTC(year, month, day, h, m, 0);
 
-  // Format this UTC moment in the target timezone using Intl
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
 
-  const parts = fmt.formatToParts(new Date(utcGuess));
-  const get = (type: string) =>
-    parseInt(parts.find((p) => p.type === type)?.value ?? "0");
+    const parts = fmt.formatToParts(new Date(utcGuess));
+    const get = (type: string) =>
+      parseInt(parts.find((p) => p.type === type)?.value ?? "0");
 
-  const tzH = get("hour") === 24 ? 0 : get("hour");
-  const inTzMs = Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    tzH,
-    get("minute"),
-    get("second"),
-  );
-
-  const offset = utcGuess - inTzMs;
-  return new Date(utcGuess + offset);
+    const tzH = get("hour") === 24 ? 0 : get("hour");
+    const inTzMs = Date.UTC(
+      get("year"),
+      get("month") - 1,
+      get("day"),
+      tzH,
+      get("minute"),
+      get("second"),
+    );
+    const offset = utcGuess - inTzMs;
+    return new Date(utcGuess + offset);
+  } catch {
+    return new Date(utcGuess);
+  }
 }
