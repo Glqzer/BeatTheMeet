@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import AuthGuard from "./components/AuthGuard";
 import "./index.css";
 import GoogleCalendarCallback from './pages/GoogleCalendarCallback'
+import Privacy from './pages/Privacy'
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<Home />} />
         <Route path="/poll/:id" element={<Poll />} />
         <Route path="/calendar/google/callback" element={<GoogleCalendarCallback />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route
           path="/dashboard"
           element={
