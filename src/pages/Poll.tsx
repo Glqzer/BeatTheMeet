@@ -105,6 +105,41 @@ export default function Poll() {
     load();
   }, [id]);
 
+  function getBestSlots(
+    allAvailability: Record<string, number>,
+    options: PollOption[],
+    totalRespondents: number,
+    poll: Poll,
+    displayTz: string,
+  ): { optionId: string; date: string; time: string; count: number }[] {
+    if (totalRespondents === 0) return [];
+
+    const maxCount = Math.max(...Object.values(allAvailability));
+    if (maxCount === 0) return [];
+
+    return Object.entries(allAvailability)
+      .filter(([, count]) => count === maxCount)
+      .slice(0, 3)
+      .map(([optionId, count]) => {
+        const opt = options.find((o) => o.id === optionId);
+        if (!opt) return null;
+        const date = new Date(opt.date + "T00:00:00").toLocaleDateString(
+          "en-US",
+          { weekday: "long", month: "long", day: "numeric" },
+        );
+        const time = opt.slot_time
+          ? formatSlotInTz(opt.date, opt.slot_time, poll.timezone, displayTz)
+          : "";
+        return { optionId, date, time, count };
+      })
+      .filter(Boolean) as {
+      optionId: string;
+      date: string;
+      time: string;
+      count: number;
+    }[];
+  }
+
   const applyBusyTimes = async (
     busy: { start: string; end: string; summary?: string }[],
     respondentId: string,
@@ -554,6 +589,49 @@ export default function Poll() {
           />
         </div>
       </div>
+
+      {(() => {
+  const bestSlots = getBestSlots(allAvailability, options, totalRespondents, poll, displayTz)
+  if (bestSlots.length === 0 || totalRespondents < 2) return null
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 1.5rem 2rem" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "1.25rem", boxShadow: "var(--shadow)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 18 }}>🎯</span>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+            Best time{bestSlots.length > 1 ? 's' : ''} — {bestSlots[0].count}/{totalRespondents} available
+          </h3>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {bestSlots.map(slot => (
+            <div key={slot.optionId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)", flexWrap: "wrap" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7c3aed", flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontWeight: 600, color: "var(--text)", fontSize: isMobile ? 13 : 14 }}>{slot.date}</span>
+                {slot.time && (
+                  <span style={{ color: "var(--text-secondary)", fontSize: 13 }}> · {slot.time}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600, background: "var(--primary-light)", padding: "2px 8px", borderRadius: 99, flexShrink: 0 }}>
+                {slot.count}/{totalRespondents}
+              </div>
+            </div>
+          ))}
+        </div>
+        {bestSlots[0].count < totalRespondents && (
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 10, marginBottom: 0 }}>
+            No time works for everyone — these are the best options so far.
+          </p>
+        )}
+        {bestSlots[0].count === totalRespondents && (
+          <p style={{ fontSize: 12, color: "#22c55e", marginTop: 10, marginBottom: 0, fontWeight: 600 }}>
+            ✓ Everyone is available at this time!
+          </p>
+        )}
+      </div>
+    </div>
+  )
+})()}
 
       {step === "calendar_import" && (
         <Popup>
@@ -1873,9 +1951,10 @@ function HeatmapGrid({
   const getColor = (count: number) => {
     if (count === 0 || totalRespondents === 0) return "var(--border)";
     const ratio = count / totalRespondents;
-    if (ratio < 0.33) return "#bfdbfe";
-    if (ratio < 0.66) return "#f9a8d4";
-    return "#7c3aed";
+    if (ratio <= 0.33) return "#ddd6fe";
+    if (ratio <= 0.66) return "#a78bfa";
+    if (ratio <= 0.99) return "#7c3aed";
+    return "#4c1d95";
   };
   const [hoveredCell, setHoveredCell] = useState<{
     optId: string;
@@ -2305,38 +2384,22 @@ function HeatmapLegend() {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
+        gap: 6,
         fontSize: 11,
         color: "var(--text-secondary)",
       }}
     >
+      <span>Few</span>
       <div
         style={{
-          width: 10,
+          width: 80,
           height: 10,
-          borderRadius: 2,
-          background: "#bfdbfe",
+          borderRadius: 99,
+          background:
+            "linear-gradient(to right, #ddd6fe, #a78bfa, #7c3aed, #4c1d95)",
         }}
-      />{" "}
-      Few
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: 2,
-          background: "#f9a8d4",
-        }}
-      />{" "}
-      Some
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: 2,
-          background: "#7c3aed",
-        }}
-      />{" "}
-      Most
+      />
+      <span>All</span>
     </div>
   );
 }
