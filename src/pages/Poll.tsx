@@ -61,6 +61,12 @@ export default function Poll() {
   const [displayTz, setDisplayTz] = useState(getLocalTimezone());
   const [busySlots, setBusySlots] = useState<Record<string, string>>({});
   const [showCalendarImport, setShowCalendarImport] = useState(false);
+  const [allRespondents, setAllRespondents] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [availabilityByOption, setAvailabilityByOption] = useState<
+    Record<string, string[]>
+  >({});
 
   useEffect(() => {
     if (!id) return;
@@ -121,23 +127,38 @@ export default function Poll() {
     if (!id) return;
     const { data: respondents } = await supabase
       .from("respondents")
-      .select("id")
+      .select("id, name")
       .eq("poll_id", id);
-    const respondentIds = (respondents ?? []).map((r) => r.id);
-    setTotalRespondents(respondentIds.length);
-    if (respondentIds.length === 0) {
+
+    const respondentList = respondents ?? [];
+    setTotalRespondents(respondentList.length);
+    setAllRespondents(respondentList);
+
+    if (respondentList.length === 0) {
       setAllAvailability({});
+      setAvailabilityByOption({});
       return;
     }
+
+    const respondentIds = respondentList.map((r) => r.id);
+
     const { data: avail } = await supabase
       .from("availability")
-      .select("option_id")
+      .select("option_id, respondent_id")
       .in("respondent_id", respondentIds);
+
     const counts: Record<string, number> = {};
+    const byOption: Record<string, string[]> = {};
+
     for (const row of avail ?? []) {
       counts[row.option_id] = (counts[row.option_id] ?? 0) + 1;
+      if (!byOption[row.option_id]) byOption[row.option_id] = [];
+      const respondent = respondentList.find((r) => r.id === row.respondent_id);
+      if (respondent) byOption[row.option_id].push(respondent.name);
     }
+
     setAllAvailability(counts);
+    setAvailabilityByOption(byOption);
   };
 
   useEffect(() => {
@@ -516,6 +537,8 @@ export default function Poll() {
             allAvailability={allAvailability}
             totalRespondents={totalRespondents}
             displayTz={displayTz}
+            allRespondents={allRespondents}
+            availabilityByOption={availabilityByOption}
           />
         </div>
       </div>
@@ -1812,12 +1835,16 @@ function HeatmapGrid({
   allAvailability,
   totalRespondents,
   displayTz,
+  allRespondents,
+  availabilityByOption,
 }: {
   poll: Poll;
   options: PollOption[];
   allAvailability: Record<string, number>;
   totalRespondents: number;
   displayTz: string;
+  allRespondents: { id: string; name: string }[];
+  availabilityByOption: Record<string, string[]>;
 }) {
   const isMobile = useIsMobile();
   const cellHeight = isMobile ? 36 : 28;
@@ -1829,6 +1856,11 @@ function HeatmapGrid({
     if (ratio < 0.66) return "#f9a8d4";
     return "#7c3aed";
   };
+  const [hoveredCell, setHoveredCell] = useState<{
+    optId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const dates = [...new Set(options.map((o) => o.date))].sort();
 
@@ -1862,6 +1894,19 @@ function HeatmapGrid({
                 {options.map((opt) => (
                   <td key={opt.id} style={{ padding: 4, textAlign: "center" }}>
                     <div
+                      onMouseEnter={(e) =>
+                        setHoveredCell({
+                          optId: opt.id,
+                          x: e.clientX,
+                          y: e.clientY,
+                        })
+                      }
+                      onMouseMove={(e) =>
+                        setHoveredCell((prev) =>
+                          prev ? { ...prev, x: e.clientX, y: e.clientY } : null,
+                        )
+                      }
+                      onMouseLeave={() => setHoveredCell(null)}
                       style={{
                         width: "100%",
                         height: cellHeightLarge,
@@ -1981,6 +2026,21 @@ function HeatmapGrid({
                     return (
                       <td key={d} style={{ padding: 2, textAlign: "center" }}>
                         <div
+                          onMouseEnter={(e) =>
+                            setHoveredCell({
+                              optId: opt.id,
+                              x: e.clientX,
+                              y: e.clientY,
+                            })
+                          }
+                          onMouseMove={(e) =>
+                            setHoveredCell((prev) =>
+                              prev
+                                ? { ...prev, x: e.clientX, y: e.clientY }
+                                : null,
+                            )
+                          }
+                          onMouseLeave={() => setHoveredCell(null)}
                           style={{
                             width: "100%",
                             height: cellHeight,
@@ -2004,6 +2064,47 @@ function HeatmapGrid({
         {totalRespondents} {totalRespondents === 1 ? "person" : "people"}{" "}
         responded
       </p>
+      {hoveredCell &&
+        (() => {
+          const available = availabilityByOption[hoveredCell.optId] ?? [];
+          const unavailable = allRespondents
+            .filter((r) => !available.includes(r.name))
+            .map((r) => r.name);
+          return (
+            <div
+              style={{
+                position: "fixed",
+                left: hoveredCell.x + 12,
+                top: hoveredCell.y - 10,
+                background: "#1f2937",
+                color: "white",
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                pointerEvents: "none",
+                zIndex: 100,
+                maxWidth: 200,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                {available.length}/{totalRespondents} available
+              </div>
+              {available.length > 0 && (
+                <div style={{ marginBottom: 4 }}>
+                  <span style={{ color: "#22c55e", fontWeight: 600 }}>✓ </span>
+                  {available.join(", ")}
+                </div>
+              )}
+              {unavailable.length > 0 && (
+                <div>
+                  <span style={{ color: "#ef4444", fontWeight: 600 }}>✗ </span>
+                  {unavailable.join(", ")}
+                </div>
+              )}
+            </div>
+          );
+        })()}
     </div>
   );
 }
