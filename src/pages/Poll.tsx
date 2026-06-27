@@ -1861,8 +1861,22 @@ function HeatmapGrid({
     x: number;
     y: number;
   } | null>(null);
+  const [tappedCell, setTappedCell] = useState<{
+    optId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const dates = [...new Set(options.map((o) => o.date))].sort();
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const handler = () => setTappedCell(null);
+    window.addEventListener("touchstart", handler);
+    return () => window.removeEventListener("touchstart", handler);
+  }, [isMobile]);
+
+  const activeCell = isMobile ? tappedCell : hoveredCell;
 
   if (poll.type === "date_only") {
     return (
@@ -1894,25 +1908,52 @@ function HeatmapGrid({
                 {options.map((opt) => (
                   <td key={opt.id} style={{ padding: 4, textAlign: "center" }}>
                     <div
-                      onMouseEnter={(e) =>
-                        setHoveredCell({
-                          optId: opt.id,
-                          x: e.clientX,
-                          y: e.clientY,
-                        })
+                      onMouseEnter={
+                        !isMobile
+                          ? (e) =>
+                              setHoveredCell({
+                                optId: opt.id,
+                                x: e.clientX,
+                                y: e.clientY,
+                              })
+                          : undefined
                       }
-                      onMouseMove={(e) =>
-                        setHoveredCell((prev) =>
-                          prev ? { ...prev, x: e.clientX, y: e.clientY } : null,
-                        )
+                      onMouseMove={
+                        !isMobile
+                          ? (e) =>
+                              setHoveredCell((prev) =>
+                                prev
+                                  ? { ...prev, x: e.clientX, y: e.clientY }
+                                  : null,
+                              )
+                          : undefined
                       }
-                      onMouseLeave={() => setHoveredCell(null)}
+                      onMouseLeave={
+                        !isMobile ? () => setHoveredCell(null) : undefined
+                      }
+                      onClick={
+                        isMobile
+                          ? (e) => {
+                              e.stopPropagation();
+                              setTappedCell((prev) =>
+                                prev?.optId === opt.id
+                                  ? null
+                                  : {
+                                      optId: opt.id,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                    },
+                              );
+                            }
+                          : undefined
+                      }
                       style={{
                         width: "100%",
                         height: cellHeightLarge,
                         borderRadius: 6,
                         background: getColor(allAvailability[opt.id] ?? 0),
                         transition: "background 0.3s",
+                        cursor: isMobile ? "pointer" : "default",
                       }}
                     />
                   </td>
@@ -1927,6 +1968,17 @@ function HeatmapGrid({
           {totalRespondents} {totalRespondents === 1 ? "person" : "people"}{" "}
           responded
         </p>
+        {isMobile && totalRespondents > 0 && (
+          <p
+            style={{
+              fontSize: 11,
+              color: "var(--text-secondary)",
+              marginTop: 6,
+            }}
+          >
+            tap a cell to see who's available
+          </p>
+        )}
       </div>
     );
   }
@@ -2026,21 +2078,45 @@ function HeatmapGrid({
                     return (
                       <td key={d} style={{ padding: 2, textAlign: "center" }}>
                         <div
-                          onMouseEnter={(e) =>
-                            setHoveredCell({
-                              optId: opt.id,
-                              x: e.clientX,
-                              y: e.clientY,
-                            })
+                          onMouseEnter={
+                            !isMobile
+                              ? (e) =>
+                                  setHoveredCell({
+                                    optId: opt.id,
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                  })
+                              : undefined
                           }
-                          onMouseMove={(e) =>
-                            setHoveredCell((prev) =>
-                              prev
-                                ? { ...prev, x: e.clientX, y: e.clientY }
-                                : null,
-                            )
+                          onMouseMove={
+                            !isMobile
+                              ? (e) =>
+                                  setHoveredCell((prev) =>
+                                    prev
+                                      ? { ...prev, x: e.clientX, y: e.clientY }
+                                      : null,
+                                  )
+                              : undefined
                           }
-                          onMouseLeave={() => setHoveredCell(null)}
+                          onMouseLeave={
+                            !isMobile ? () => setHoveredCell(null) : undefined
+                          }
+                          onClick={
+                            isMobile
+                              ? (e) => {
+                                  e.stopPropagation();
+                                  setTappedCell((prev) =>
+                                    prev?.optId === opt.id
+                                      ? null
+                                      : {
+                                          optId: opt.id,
+                                          x: e.clientX,
+                                          y: e.clientY,
+                                        },
+                                  );
+                                }
+                              : undefined
+                          }
                           style={{
                             width: "100%",
                             height: cellHeight,
@@ -2049,6 +2125,7 @@ function HeatmapGrid({
                               ? getColor(allAvailability[opt.id] ?? 0)
                               : "transparent",
                             transition: "background 0.3s",
+                            cursor: isMobile ? "pointer" : "default",
                           }}
                         />
                       </td>
@@ -2064,9 +2141,16 @@ function HeatmapGrid({
         {totalRespondents} {totalRespondents === 1 ? "person" : "people"}{" "}
         responded
       </p>
-      {hoveredCell &&
+      {isMobile && totalRespondents > 0 && (
+        <p
+          style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 6 }}
+        >
+          tap a cell to see who's available
+        </p>
+      )}
+      {activeCell &&
         (() => {
-          const available = availabilityByOption[hoveredCell.optId] ?? [];
+          const available = availabilityByOption[activeCell.optId] ?? [];
           const unavailable = allRespondents
             .filter((r) => !available.includes(r.name))
             .map((r) => r.name);
@@ -2074,8 +2158,8 @@ function HeatmapGrid({
             <div
               style={{
                 position: "fixed",
-                left: hoveredCell.x + 12,
-                top: hoveredCell.y - 10,
+                left: Math.min(activeCell.x + 12, window.innerWidth - 220),
+                top: Math.max(activeCell.y - 10, 60),
                 background: "#1f2937",
                 color: "white",
                 padding: "8px 12px",
