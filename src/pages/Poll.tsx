@@ -2079,7 +2079,7 @@ function HeatmapGrid({
                       <td key={d} style={{ padding: 2, textAlign: "center" }}>
                         <div
                           onMouseEnter={
-                            !isMobile
+                            !isMobile && opt
                               ? (e) =>
                                   setHoveredCell({
                                     optId: opt.id,
@@ -2089,7 +2089,7 @@ function HeatmapGrid({
                               : undefined
                           }
                           onMouseMove={
-                            !isMobile
+                            !isMobile && opt
                               ? (e) =>
                                   setHoveredCell((prev) =>
                                     prev
@@ -2099,10 +2099,12 @@ function HeatmapGrid({
                               : undefined
                           }
                           onMouseLeave={
-                            !isMobile ? () => setHoveredCell(null) : undefined
+                            !isMobile && opt
+                              ? () => setHoveredCell(null)
+                              : undefined
                           }
                           onClick={
-                            isMobile
+                            isMobile && opt
                               ? (e) => {
                                   e.stopPropagation();
                                   setTappedCell((prev) =>
@@ -2125,7 +2127,7 @@ function HeatmapGrid({
                               ? getColor(allAvailability[opt.id] ?? 0)
                               : "transparent",
                             transition: "background 0.3s",
-                            cursor: isMobile ? "pointer" : "default",
+                            cursor: isMobile && opt ? "pointer" : "default",
                           }}
                         />
                       </td>
