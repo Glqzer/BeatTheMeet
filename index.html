@@ -7,6 +7,29 @@
     <title>BeatTheMeet</title>
   </head>
   <body>
+    <div
+      id="init-check"
+      style="
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #6d28d9;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: system-ui;
+        z-index: 9999;
+      "
+    >
+      Loading...
+    </div>
+    <script>
+      setTimeout(function () {
+        var el = document.getElementById("init-check");
+        if (el) el.style.display = "none";
+      }, 3000);
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
