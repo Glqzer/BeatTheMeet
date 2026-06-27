@@ -50,11 +50,13 @@ export default function GoogleCalendarCallback() {
             sessionStorage.setItem(
               `calendar-busy-${pollId}`,
               JSON.stringify(
-                data.busy.map((b: { start: string; end: string }) => ({
-                  start: b.start,
-                  end: b.end,
-                  summary: "Busy",
-                })),
+                data.busy.map(
+                  (b: { start: string; end: string; summary?: string }) => ({
+                    start: b.start,
+                    end: b.end,
+                    summary: b.summary ?? "Busy",
+                  }),
+                ),
               ),
             );
             setStatus("Calendar imported! Redirecting...");
