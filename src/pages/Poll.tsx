@@ -1702,7 +1702,7 @@ function AvailabilityGrid({
         >
           {tapStart
             ? "📍 Now tap the end of your available range"
-            : "👆 Tap where your availability starts, then tap where it ends"}
+            : "👆 Tap where your availability starts then ends"}
         </div>
       )}
 
