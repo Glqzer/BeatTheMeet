@@ -51,7 +51,7 @@ export default function Poll() {
   const [notFound, setNotFound] = useState(false);
   const [datePage, setDatePage] = useState(0);
   const isMobile = useIsMobile();
-  const PAGE_SIZE = isMobile ? 3 : 5;
+  const PAGE_SIZE = isMobile ? 3 : 7;
   const allDates = [...new Set(options.map((o) => o.date))].sort();
   const totalPages = Math.ceil(allDates.length / PAGE_SIZE);
   const visibleDates = allDates.slice(
