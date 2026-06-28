@@ -1574,7 +1574,7 @@ export default function Home() {
               {
                 emoji: "📆",
                 title: "calendar import",
-                desc: "google or outlook. busy = red. free = open.",
+                desc: "google or outlook or any ics. busy = red. free = open.",
               },
               {
                 emoji: "🔗",
@@ -1713,7 +1713,7 @@ export default function Home() {
                 {
                   emoji: "📆",
                   title: "calendar import",
-                  desc: "connect google or outlook. ur busy times go red. free times stay open. ur calendar but it works with others.",
+                  desc: "connect google or outlook or any ics. ur busy times go red. free times stay open. ur calendar but it works with others.",
                 },
                 {
                   emoji: "🔗",

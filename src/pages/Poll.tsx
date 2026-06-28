@@ -950,10 +950,6 @@ function CalendarImportStep({
               — Settings → your calendar → Secret address in iCal format
             </li>
             <li>
-              <strong style={{ color: "var(--text)" }}>Outlook</strong> —
-              Calendar → Shared calendars → Publish → ICS link
-            </li>
-            <li>
               <strong style={{ color: "var(--text)" }}>Apple Calendar</strong> —
               Calendar → Get Info → Share Link
             </li>
@@ -1053,24 +1049,6 @@ function CalendarImportStep({
           }}
         >
           <span>🗓</span> Import from Google Calendar
-        </button>
-        <button
-          onClick={onDone}
-          style={{
-            padding: "12px",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            cursor: "pointer",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontWeight: 500,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          <span>📅</span> Import from Outlook
         </button>
         <button
           onClick={() => setShowICS(true)}
