@@ -60,72 +60,116 @@ export function convertSlotTime(
   fromTz: string,
   toTz: string
 ): { date: string; time: string } {
-  const [h, m] = slotTime.split(':').map(Number)
+  try {
+    if (!date || !slotTime || !fromTz || !toTz) throw new Error('missing args')
 
-  // Step 1: Find the UTC ms for this wall clock time in fromTz
-  const utcMs = wallClockToUTC(date, h, m, fromTz)
+    const [h, m] = slotTime.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) throw new Error('invalid slot time')
 
-  // Step 2: Format that UTC moment in toTz
-  const converted = new Date(utcMs)
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: toTz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).formatToParts(converted)
+    const utcMs = wallClockToUTC(date, h, m, fromTz)
+    if (!isFinite(utcMs)) throw new Error('invalid utcMs')
 
-  const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
-  const time = `${get('hour')}:${get('minute')} ${get('dayPeriod')}`
+    const converted = new Date(utcMs)
+    if (!isFinite(converted.getTime())) throw new Error('invalid date')
 
-  return {
-    date: `${get('year')}-${get('month')}-${get('day')}`,
-    time,
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: toTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).formatToParts(converted)
+
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+    const time = `${get('hour')}:${get('minute')} ${get('dayPeriod')}`
+
+    return {
+      date: `${get('year')}-${get('month')}-${get('day')}`,
+      time,
+    }
+  } catch {
+    // Fallback: return raw slot time without conversion
+    const parts = slotTime?.split(':').map(Number) ?? [0, 0]
+    const h = parts[0] ?? 0
+    const m = parts[1] ?? 0
+    const period = h < 12 ? 'AM' : 'PM'
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return {
+      date,
+      time: `${display}:${String(m).padStart(2, '0')} ${period}`,
+    }
   }
 }
 
 function wallClockToUTC(date: string, h: number, m: number, tz: string): number {
-  // Create a UTC date at this time
-  const utcGuess = Date.UTC(
-    parseInt(date.split('-')[0]),
-    parseInt(date.split('-')[1]) - 1,
-    parseInt(date.split('-')[2]),
-    h, m, 0
-  )
+  try {
+    if (!date || !tz || isNaN(h) || isNaN(m)) return NaN
 
-  // What does this UTC moment look like in the source timezone?
-  const inTz = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(new Date(utcGuess))
+    const parts = date.split('-')
+    const year = parseInt(parts[0])
+    const month = parseInt(parts[1]) - 1
+    const day = parseInt(parts[2])
 
-  // Parse the formatted string back to UTC ms
-  const tzDate = new Date(inTz + 'Z') // treat as UTC to parse
-  const wallClockMs = tzDate.getTime()
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return NaN
 
-  // The offset is the difference between what we wanted and what we got
-  const offset = utcGuess - wallClockMs
+    const utcGuess = Date.UTC(year, month, day, h, m, 0)
+    if (!isFinite(utcGuess)) return NaN
 
-  // Apply the offset to get the true UTC time for this wall clock time
-  return utcGuess + offset
+    const guessDate = new Date(utcGuess)
+    if (!isFinite(guessDate.getTime())) return NaN
+
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+
+    const inTz = fmt.format(guessDate)
+    const tzDate = new Date(inTz + 'Z')
+    if (!isFinite(tzDate.getTime())) return utcGuess
+
+    const wallClockMs = tzDate.getTime()
+    const offset = utcGuess - wallClockMs
+    return utcGuess + offset
+  } catch {
+    return NaN
+  }
 }
 
 export function formatSlotInTz(date: string, slotTime: string, fromTz: string, toTz: string): string {
-  if (fromTz === toTz) {
-    const [h, m] = slotTime.split(':').map(Number)
+  try {
+    if (!date || !slotTime || !fromTz || !toTz) {
+      const parts = slotTime?.split(':').map(Number) ?? [0, 0]
+      const h = parts[0] ?? 0
+      const m = parts[1] ?? 0
+      const period = h < 12 ? 'AM' : 'PM'
+      const display = h === 0 ? 12 : h > 12 ? h - 12 : h
+      return `${display}:${String(m).padStart(2, '0')} ${period}`
+    }
+
+    if (fromTz === toTz) {
+      const [h, m] = slotTime.split(':').map(Number)
+      const period = h < 12 ? 'AM' : 'PM'
+      const display = h === 0 ? 12 : h > 12 ? h - 12 : h
+      return `${display}:${String(m).padStart(2, '0')} ${period}`
+    }
+
+    return convertSlotTime(date, slotTime, fromTz, toTz).time
+  } catch {
+    const parts = slotTime?.split(':').map(Number) ?? [0, 0]
+    const h = parts[0] ?? 0
+    const m = parts[1] ?? 0
     const period = h < 12 ? 'AM' : 'PM'
     const display = h === 0 ? 12 : h > 12 ? h - 12 : h
     return `${display}:${String(m).padStart(2, '0')} ${period}`
   }
-  return convertSlotTime(date, slotTime, fromTz, toTz).time
 }
 
 export function getAllTimezones(): { value: string; label: string }[] {
